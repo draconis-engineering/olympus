@@ -1,6 +1,6 @@
 // src/boot.rs
 
-use super::guard::TUIGuard;
+use super::app::TUIGuard;
 use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
