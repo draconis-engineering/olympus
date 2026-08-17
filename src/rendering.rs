@@ -9,7 +9,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 struct PCHS {
-    // power cadence hr speed
     power: Rect,
     cadence: Rect,
     hr: Rect,

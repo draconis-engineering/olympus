@@ -11,8 +11,10 @@ use rendering::{Data, draw};
 use std::io;
 
 fn main() -> io::Result<()> {
+    // Initialize the terminal
     let mut terminal = init()?;
 
+    // Load fake data - Make a function of this and update inside the loop? async
     let data = Data {
         power: 300,
         cadence: 95,
