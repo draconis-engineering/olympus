@@ -25,10 +25,10 @@ fn main() -> io::Result<()> {
     let mut app = App::new(data);
 
     loop {
-        terminal.draw(|frame| draw(frame, &app))?;
+        terminal.draw(|frame| draw(frame, &app, app.selections()))?;
         if let Event::Key(key) = read()? {
             if key.kind == KeyEventKind::Press {
-                let action = app.handle_key_press(key.code);
+                let action = app.handle_key_press(key.code, app.screen());
                 if action == Action::Quit {
                     break;
                 }

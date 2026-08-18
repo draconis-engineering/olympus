@@ -714,6 +714,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "ratatui",
+ "ratatui-interact",
 ]
 
 [[package]]
@@ -992,6 +993,19 @@ dependencies = [
  "crossterm",
  "instability",
  "ratatui-core",
+]
+
+[[package]]
+name = "ratatui-interact"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79574553b820a6ebe36e0d09b1e8c470242be09215b95e73618a9b293d135e22"
+dependencies = [
+ "crossterm",
+ "ratatui",
+ "regex",
+ "thiserror 2.0.20",
+ "unicode-width",
 ]
 
 [[package]]
