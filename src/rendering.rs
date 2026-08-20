@@ -22,30 +22,9 @@ pub struct Data {
     pub speed: f32,
 }
 
-// Simple quadsplit helper assuming it slices an area into 4 quarters
-fn quadsplit(area: Rect) -> PCHS {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
-    let top = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(vertical[0]);
-
-    let bottom = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(vertical[1]);
-
-    PCHS {
-        power: top[0],
-        cadence: top[1],
-        hr: bottom[0],
-        speed: bottom[1],
-    }
-}
+// ====================================
+// --------- Helper Functions ---------
+// ====================================
 
 // Footer rendering function
 fn footer_spans(current: Screen) -> Vec<Span<'static>> {
@@ -135,19 +114,80 @@ fn main_draw(frame: &mut Frame, area: Rect, data: &Data) {
 }
 
 fn control_draw(frame: &mut Frame, area: Rect, data: &Data) {
-    let grids: PCHS = quadsplit(area);
-    let powerwdgt = Block::new().title("Power").borders(Borders::ALL);
-    let cadencewdgt = Block::new().title("Cadence").borders(Borders::ALL);
-    let hrwdgt = Block::new().title("Heart Rate").borders(Borders::ALL);
-    let speedwdgt = Block::new().title("Speed").borders(Borders::ALL);
-    let powerpara = Paragraph::new(format!("{} Watts", data.power)).block(powerwdgt);
-    let cadencepara = Paragraph::new(format!("{} RPM", data.cadence)).block(cadencewdgt);
-    let hrpara = Paragraph::new(format!("{} BPM", data.hr)).block(hrwdgt);
-    let speedpara = Paragraph::new(format!("{:.1} KM/H", data.speed)).block(speedwdgt);
-    frame.render_widget(powerpara, grids.power);
-    frame.render_widget(cadencepara, grids.cadence);
-    frame.render_widget(hrpara, grids.hr);
-    frame.render_widget(speedpara, grids.speed);
+    // Layout - split into 30% HUD and 70% main area
+    let [hudrect, mainrect] =
+        Layout::vertical([Constraint::Percentage(30), Constraint::Percentage(70)]).areas(area);
+
+    let [pwrrect, hrrect, rpmrect, kmhrect] = Layout::horizontal([
+        Constraint::Percentage(25),
+        Constraint::Percentage(25),
+        Constraint::Percentage(25),
+        Constraint::Percentage(25),
+    ])
+    .areas(hudrect);
+
+    // HUD data displays
+    let pwrblck = Paragraph::new(Line::from(vec![Span::styled(
+        format!("Power: {}", data.power),
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+    let hrblck = Paragraph::new(Line::from(vec![Span::styled(
+        format!("HR: {}", data.hr),
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+    let rpmblck = Paragraph::new(Line::from(vec![Span::styled(
+        format!("RPM: {}", data.cadence),
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+    let kmhblck = Paragraph::new(Line::from(vec![Span::styled(
+        format!("KMH: {}", data.speed),
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+
+    frame.render_widget(pwrblck, pwrrect);
+    frame.render_widget(hrblck, hrrect);
+    frame.render_widget(rpmblck, rpmrect);
+    frame.render_widget(kmhblck, kmhrect);
+
+    // Graphs - placed on the 70% main area, displaying various graphs
+    let [altirect, speedrect, placeholder1, placeholder2] = Layout::horizontal([
+        Constraint::Percentage(25),
+        Constraint::Percentage(25),
+        Constraint::Percentage(25),
+        Constraint::Percentage(25),
+    ])
+    .areas(mainrect);
+
+    let altiblck = Paragraph::new(Line::from(vec![Span::styled(
+        "Altitude Graph",
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+    let speedblck = Paragraph::new(Line::from(vec![Span::styled(
+        "Speed Graph",
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+
+    let ph1blck = Paragraph::new(Line::from(vec![Span::styled(
+        "Placeholder 1",
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+    let ph2blck = Paragraph::new(Line::from(vec![Span::styled(
+        "Placeholder 2",
+        Style::default(),
+    )]))
+    .block(Block::new().borders(Borders::ALL));
+
+    frame.render_widget(altiblck, altirect);
+    frame.render_widget(speedblck, speedrect);
+    frame.render_widget(ph1blck, placeholder1);
+    frame.render_widget(ph2blck, placeholder2);
 }
 
 fn database_draw(frame: &mut Frame, area: Rect) {
@@ -207,8 +247,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection) {
     });
 
     // Slice the inner sidebar area vertically for text item groups
-    let [general, appearance, bluetooth, system, etc] = Layout::vertical([
+    let [general, appearance, bluetooth, system, user, etc] = Layout::vertical([
         Constraint::Length(3), // Extra vertical height gives visual breathing room
+        Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Length(3),
@@ -267,6 +308,15 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection) {
         get_item_style(SettingsSelection::System),
     )]));
 
+    let usertxt = Paragraph::new(Line::from(vec![Span::styled(
+        if *selected == SettingsSelection::User {
+            " -> User <- "
+        } else {
+            "    User    "
+        },
+        get_item_style(SettingsSelection::User),
+    )]));
+
     // Bottom placeholder inside the sidebar container
     let etc_content = Paragraph::new("Press [Tab] to swap panes\nPress [Q] to exit")
         .style(
@@ -281,6 +331,7 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection) {
     frame.render_widget(appeartxt, appearance);
     frame.render_widget(bttxt, bluetooth);
     frame.render_widget(systemtxt, system);
+    frame.render_widget(usertxt, user);
     frame.render_widget(etc_content, etc);
 
     // 6. Draw actual content inside the Right Control Panel based on active selection
@@ -302,12 +353,18 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection) {
         SettingsSelection::System => Paragraph::new(
             "System Information\n------------------\nOS: RustOS v1.0.0\nMemory Usage: 42MB\nUptime: 2h 14m",
         ),
+        SettingsSelection::User => {
+            Paragraph::new("User Settings\n--------------\n[ ] Dark Mode\n[ ] High Contrast")
+        }
     };
 
     frame.render_widget(content, inner_controls_area);
 }
 
-// Multiplexer
+// ====================================
+// --- Drawing Multiplexer Function ---
+// ====================================
+
 pub fn draw(frame: &mut Frame, app: &App, selections: &Selections) {
     // Properly split the screen area into two horizontal sections
     let [content_area, footer_area] =

@@ -45,16 +45,58 @@ pub enum MainSelection {
     #[default]
     Main,
 }
+
+impl MainSelection {
+    pub fn next(&mut self) {
+        *self = match *self {
+            MainSelection::Main => MainSelection::Main,
+        };
+    }
+    pub fn prev(&mut self) {
+        *self = match *self {
+            MainSelection::Main => MainSelection::Main,
+        };
+    }
+}
+
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum ControlSelection {
     #[default]
     Main,
 }
+
+impl ControlSelection {
+    pub fn next(&mut self) {
+        *self = match *self {
+            ControlSelection::Main => ControlSelection::Main,
+        };
+    }
+    pub fn prev(&mut self) {
+        *self = match *self {
+            ControlSelection::Main => ControlSelection::Main,
+        };
+    }
+}
+
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum DatabaseSelection {
     #[default]
     Main,
 }
+
+impl DatabaseSelection {
+    pub fn next(&mut self) {
+        *self = match *self {
+            DatabaseSelection::Main => DatabaseSelection::Main,
+        };
+    }
+    pub fn prev(&mut self) {
+        *self = match *self {
+            DatabaseSelection::Main => DatabaseSelection::Main,
+        };
+    }
+}
+
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum SettingsSelection {
     #[default]
@@ -62,6 +104,28 @@ pub enum SettingsSelection {
     Appearance,
     Bluetooth,
     System,
+    User,
+}
+
+impl SettingsSelection {
+    pub fn next(&mut self) {
+        *self = match *self {
+            SettingsSelection::General => SettingsSelection::Appearance,
+            SettingsSelection::Appearance => SettingsSelection::Bluetooth,
+            SettingsSelection::Bluetooth => SettingsSelection::System,
+            SettingsSelection::System => SettingsSelection::User,
+            SettingsSelection::User => SettingsSelection::General,
+        };
+    }
+    pub fn prev(&mut self) {
+        *self = match *self {
+            SettingsSelection::General => SettingsSelection::User,
+            SettingsSelection::Appearance => SettingsSelection::General,
+            SettingsSelection::Bluetooth => SettingsSelection::Appearance,
+            SettingsSelection::System => SettingsSelection::Bluetooth,
+            SettingsSelection::User => SettingsSelection::System,
+        };
+    }
 }
 
 #[derive(PartialEq)]
@@ -91,6 +155,22 @@ impl Selections {
     }
     pub fn settings(&self) -> &SettingsSelection {
         &self.settings_select
+    }
+    pub fn next(&mut self, screen: Screen) {
+        match screen {
+            Screen::Main => self.main_select.next(),
+            Screen::Control => self.control_select.next(),
+            Screen::Database => self.database_select.next(),
+            Screen::Settings => self.settings_select.next(),
+        }
+    }
+    pub fn prev(&mut self, screen: Screen) {
+        match screen {
+            Screen::Main => self.main_select.prev(),
+            Screen::Control => self.control_select.prev(),
+            Screen::Database => self.database_select.prev(),
+            Screen::Settings => self.settings_select.prev(),
+        }
     }
 }
 
@@ -141,15 +221,15 @@ impl App {
                 self.screen = Screen::Settings;
                 Action::Continue
             }
-            KeyCode::Char('^') => {
-                // Correct symbol?
-                match screen {
-                    Screen::Main => Action::Continue, // No functionality for arrows yet
-                    Screen::Control => Action::Continue, // No functionality for arrows yet
-                    Screen::Database => Action::Continue, // No functionality for arrows yet
-                    Screen::Settings => Action::Continue, // No functionality for arrows yet
-                }
+            KeyCode::Up => {
+                self.selections.prev(screen);
+                Action::Continue
             }
+            KeyCode::Down => {
+                self.selections.next(screen);
+                Action::Continue
+            }
+
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
             _ => Action::Continue,
         }
