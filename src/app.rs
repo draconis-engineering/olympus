@@ -6,6 +6,7 @@ use crossterm::event::KeyCode;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io::Stdout;
 use std::ops::{Deref, DerefMut};
+use std::u16;
 
 pub struct Data {
     pub pwr: u16,
@@ -13,6 +14,12 @@ pub struct Data {
     pub cadence: u16,
     pub hr: u16,
     pub speed: f32,
+}
+
+impl Data {
+    pub fn chartdata(&self) -> (&u16, &f32) {
+        (&self.pwr, &self.speed)
+    }
 }
 
 pub struct TUIGuard {
@@ -151,15 +158,15 @@ impl Selections {
             settings_select: SettingsSelection::default(),
         }
     }
-    //pub fn main(&self) -> &MainSelection {
-    //    &self.main_select
-    //}
-    //pub fn control(&self) -> &ControlSelection {
-    //    &self.control_select
-    //}
-    //pub fn database(&self) -> &DatabaseSelection {
-    //    &self.database_select
-    //}
+    pub fn main(&self) -> &MainSelection {
+        &self.main_select
+    }
+    pub fn control(&self) -> &ControlSelection {
+        &self.control_select
+    }
+    pub fn database(&self) -> &DatabaseSelection {
+        &self.database_select
+    }
     pub fn settings(&self) -> &SettingsSelection {
         &self.settings_select
     }
@@ -208,6 +215,13 @@ impl App {
     }
     pub fn selections(&self) -> &Selections {
         &self.selections
+    }
+
+    pub fn version(&self) -> &str {
+        "0.1.0"
+    }
+    pub fn devices(&self) -> &str {
+        "Wahoo Kickr Core 2 - CONNECTED"
     }
 
     pub fn handle_key_press(&mut self, key_code: KeyCode, screen: Screen) -> Action {

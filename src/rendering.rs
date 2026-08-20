@@ -1,6 +1,6 @@
 // src/rendering.rs
 
-use super::app::{App, Data, Screen, Selections, SettingsSelection};
+use super::app::{App, Screen, Selections, SettingsSelection};
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
@@ -43,30 +43,31 @@ fn footer_spans(current: Screen) -> Vec<Span<'static>> {
 }
 
 // Get color from HR zone
-fn hr2color(hr: u16) -> Color {
+fn hr2color(hr: u16) -> (Color, u16) {
     match hr {
-        0..=113 => Color::White,
-        114..=149 => Color::Gray,
-        150..=170 => Color::LightBlue,
-        171..=180 => Color::Green,
-        181..=191 => Color::Yellow,
-        192..=220 => Color::Red,
-        _ => Color::White,
+        0..=113 => (Color::White, 0),
+        114..=149 => (Color::Gray, 1),
+        150..=170 => (Color::LightBlue, 2),
+        171..=180 => (Color::Green, 3),
+        181..=191 => (Color::Yellow, 4),
+        192..=220 => (Color::Red, 5),
+        _ => (Color::White, 0),
     }
 }
 
-// Convert power + lactate power to color for rendering
-fn pwr2color(pwr: u16, ltpwr: u16) -> Color {
-    let ltpwr_percentage = (ltpwr as f32 / pwr as f32) * 100.0;
+// Convert power + lactate threshold power to color for rendering based on power zones and Dr Andrew Coggans Model
+fn pwr2color(pwr: u16, ltpwr: u16) -> (Color, u16) {
+    // Color, Zone, Zone description
+    let ltpwr_percentage = (pwr as f32 / ltpwr as f32) * 100.0;
     match ltpwr_percentage.round() {
-        0.0..=54.0 => Color::LightBlue,
-        55.0..=75.0 => Color::Blue,
-        76.0..=87.0 => Color::Green,
-        88.0..=94.0 => Color::Yellow,
-        95.0..=105.0 => Color::Rgb(255, 128, 0), // Orange
-        106.0..=120.0 => Color::Red,
-        121.0..=1000.0 => Color::Rgb(255, 192, 203), // Pink
-        _ => Color::White,
+        0.0..=54.0 => (Color::LightBlue, 1),
+        55.0..=75.0 => (Color::Blue, 2),
+        76.0..=90.0 => (Color::Green, 3),
+        91.0..=105.0 => (Color::Yellow, 4),
+        106.0..=120.0 => (Color::Rgb(255, 128, 0), 5), // Orange
+        121.0..=150.0 => (Color::Red, 6),
+        151.0..=1000.0 => (Color::Rgb(255, 192, 203), 7), // Pink
+        _ => (Color::White, 0),
     }
 }
 
@@ -74,7 +75,9 @@ fn pwr2color(pwr: u16, ltpwr: u16) -> Color {
 // --- Page-Specific Draw Functions ---
 // ====================================
 
-fn main_draw(frame: &mut Frame, area: Rect, data: &Data) {
+fn main_draw(frame: &mut Frame, area: Rect, app: &App) {
+    let data = app.data();
+
     // Split screen vertically into Header, Main Visual, and Footer status bar
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -128,7 +131,9 @@ fn main_draw(frame: &mut Frame, area: Rect, data: &Data) {
     frame.render_widget(mock_visual, main_layout[1]);
 }
 
-fn control_draw(frame: &mut Frame, area: Rect, data: &Data) {
+fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
+    let data = app.data();
+
     // Layout - split into 30% HUD and 70% main area
     let [hudrect, mainrect] =
         Layout::vertical([Constraint::Percentage(30), Constraint::Percentage(70)]).areas(area);
@@ -142,26 +147,28 @@ fn control_draw(frame: &mut Frame, area: Rect, data: &Data) {
     .areas(hudrect);
 
     // HUD data displays
+    let (pwrcolor, pwrzone) = pwr2color(data.pwr, data.ltpwr);
     let pwrblck = Paragraph::new(Line::from(vec![Span::styled(
-        format!("{} Watts", data.pwr),
+        format!("{} Watts | Zone {}", data.pwr, pwrzone),
         Style::default(),
     )]))
     .block(
         Block::new()
             .borders(Borders::ALL)
             .title(" Power ")
-            .fg(pwr2color(data.pwr, data.ltpwr)),
+            .fg(pwrcolor),
     );
 
+    let (hrcolor, hrzone) = hr2color(data.hr);
     let hrblck = Paragraph::new(Line::from(vec![Span::styled(
-        format!("{} BPM", data.hr),
+        format!("{} BPM | Zone {}", data.hr, hrzone),
         Style::default(),
     )]))
     .block(
         Block::new()
             .borders(Borders::ALL)
             .title(" Heart Rate ")
-            .fg(hr2color(data.hr)),
+            .fg(hrcolor),
     );
 
     let rpmblck = Paragraph::new(Line::from(vec![Span::styled(
@@ -187,43 +194,27 @@ fn control_draw(frame: &mut Frame, area: Rect, data: &Data) {
     frame.render_widget(kmhblck, kmhrect);
 
     // Graphs - placed on the 70% main area, displaying various graphs
-    let [altirect, speedrect, placeholder1, placeholder2] = Layout::horizontal([
-        Constraint::Percentage(25),
-        Constraint::Percentage(25),
-        Constraint::Percentage(25),
-        Constraint::Percentage(25),
-    ])
-    .areas(mainrect);
+    let [graphs, placeholder] =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(mainrect);
 
-    let altiblck = Paragraph::new(Line::from(vec![Span::styled(
-        "Altitude Graph",
-        Style::default(),
-    )]))
-    .block(Block::new().borders(Borders::ALL));
-    let speedblck = Paragraph::new(Line::from(vec![Span::styled(
-        "Speed Graph",
+    let [altirect, speedrect] =
+        Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(graphs);
+
+    let phblck = Paragraph::new(Line::from(vec![Span::styled(
+        "Placeholder",
         Style::default(),
     )]))
     .block(Block::new().borders(Borders::ALL));
 
-    let ph1blck = Paragraph::new(Line::from(vec![Span::styled(
-        "Placeholder 1",
-        Style::default(),
-    )]))
-    .block(Block::new().borders(Borders::ALL));
-    let ph2blck = Paragraph::new(Line::from(vec![Span::styled(
-        "Placeholder 2",
-        Style::default(),
-    )]))
-    .block(Block::new().borders(Borders::ALL));
-
-    frame.render_widget(altiblck, altirect);
-    frame.render_widget(speedblck, speedrect);
-    frame.render_widget(ph1blck, placeholder1);
-    frame.render_widget(ph2blck, placeholder2);
+    //frame.render_widget(altichart, altirect);
+    //frame.render_widget(speedchart, speedrect);
+    frame.render_widget(phblck, placeholder);
 }
 
-fn database_draw(frame: &mut Frame, area: Rect) {
+fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
+    let data = app.data();
+
     let [sidebar_area, list_area] =
         Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)]).areas(area);
 
@@ -235,15 +226,15 @@ fn database_draw(frame: &mut Frame, area: Rect) {
     ])
     .areas(sidebar_area);
 
-    let search = Paragraph::new(Line::from(vec![Span::styled("Search", Style::default())]))
-        .block(Block::new().borders(Borders::ALL));
-    let filters = Paragraph::new(Line::from(vec![Span::styled("Filters", Style::default())]))
-        .block(Block::new().borders(Borders::ALL));
-    let buttons = Paragraph::new(Line::from(vec![Span::styled("Buttons", Style::default())]))
-        .block(Block::new().borders(Borders::ALL));
+    let search = Block::new().borders(Borders::ALL).title(" Search ");
+    let filters = Block::new().borders(Borders::ALL).title(" Filters ");
+    let buttons = Block::new().borders(Borders::ALL);
     let etc = Block::new().borders(Borders::ALL);
 
-    let list = Block::new().borders(Borders::ALL);
+    let list = Block::new()
+        .borders(Borders::ALL)
+        .title(" Workouts ")
+        .fg(Color::DarkGray);
 
     frame.render_widget(filters, filters_area);
     frame.render_widget(search, searchbar_area);
@@ -252,18 +243,18 @@ fn database_draw(frame: &mut Frame, area: Rect) {
     frame.render_widget(list, list_area);
 }
 
-fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection) {
-    // 1. Divide screen into exactly TWO primary structural blocks
+fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection, app: &App) {
+    // Divide screen into primary structural blocks
     let [sidebar_area, controls_area] =
         Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)]).areas(area);
 
-    // 2. Structural Frame 1: Left Navigation Menu Container
+    // Structural Frame 1: Left Navigation Menu Container
     let nav_block = Block::default()
         .title(" Settings ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    // 3. Structural Frame 2: Right Active Content Container
+    // Structural Frame 2: Right Active Content Container
     let controls_block = Block::default()
         .title(" Configuration ")
         .borders(Borders::ALL)
@@ -273,7 +264,7 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection) {
     frame.render_widget(nav_block, sidebar_area);
     frame.render_widget(controls_block, controls_area);
 
-    // 4. Inset the left margin slightly to separate border lines from inner text
+    // Inset the left margin slightly to separate border lines from inner text
     let inner_sidebar = sidebar_area.inner(Margin {
         horizontal: 1,
         vertical: 1,
@@ -350,45 +341,37 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection) {
         get_item_style(SettingsSelection::User),
     )]));
 
-    // Bottom placeholder inside the sidebar container
-    let etc_content = Paragraph::new("Press [Tab] to swap panes\nPress [Q] to exit")
-        .style(
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        )
-        .wrap(Wrap { trim: true });
-
     // Render menu items directly onto the canvas frame
     frame.render_widget(generaltxt, general);
     frame.render_widget(appeartxt, appearance);
     frame.render_widget(bttxt, bluetooth);
     frame.render_widget(systemtxt, system);
     frame.render_widget(usertxt, user);
-    frame.render_widget(etc_content, etc);
 
-    // 6. Draw actual content inside the Right Control Panel based on active selection
+    // Draw actual content inside the Right Control Panel based on active selection
     let inner_controls_area = controls_area.inner(Margin {
         horizontal: 2,
         vertical: 1,
     });
 
     let content = match selected {
-        SettingsSelection::General => Paragraph::new(
-            "General Settings\n----------------\n[ ] Auto-Save Enabled\n[ ] Check for Updates",
-        ),
-        SettingsSelection::Appearance => Paragraph::new(
-            "Appearance Settings\n-------------------\nTheme: Dark Mode\nFont Size: 12\nColor Palette: Cyan/RGB",
-        ),
-        SettingsSelection::Bluetooth => Paragraph::new(
-            "Bluetooth Devices\n-----------------\n[*] Wireless Controller (Connected)\n[ ] Audio Headset (Pairing...)",
-        ),
-        SettingsSelection::System => Paragraph::new(
-            "System Information\n------------------\nOS: RustOS v1.0.0\nMemory Usage: 42MB\nUptime: 2h 14m",
-        ),
-        SettingsSelection::User => {
-            Paragraph::new("User Settings\n--------------\n[ ] Dark Mode\n[ ] High Contrast")
-        }
+        SettingsSelection::General => Paragraph::new(format!(
+            "General Settings\n----------------\n[ ] Auto-Save Enabled\n[ ] Check for Updates"
+        )),
+        SettingsSelection::Appearance => Paragraph::new(format!(
+            "Appearance Settings\n-------------------\nTheme: Dark Mode\nFont Size: 12"
+        )),
+        SettingsSelection::Bluetooth => Paragraph::new(format!(
+            "Bluetooth Devices\n-----------------\n[*] {}",
+            app.devices()
+        )),
+        SettingsSelection::System => Paragraph::new(format!(
+            "System Information\n------------------\nVersion: {}",
+            app.version()
+        )),
+        SettingsSelection::User => Paragraph::new(format!(
+            "User Settings\n--------------\n[ ] Dark Mode\n[ ] High Contrast"
+        )),
     };
 
     frame.render_widget(content, inner_controls_area);
@@ -410,16 +393,16 @@ pub fn draw(frame: &mut Frame, app: &App, selections: &Selections) {
     // Render content
     match app.screen() {
         Screen::Main => {
-            main_draw(frame, content_area, app.data());
+            main_draw(frame, content_area, app);
         }
         Screen::Control => {
-            control_draw(frame, content_area, app.data());
+            control_draw(frame, content_area, app);
         }
         Screen::Database => {
-            database_draw(frame, content_area);
+            database_draw(frame, content_area, app);
         }
         Screen::Settings => {
-            settings_draw(frame, content_area, selections.settings());
+            settings_draw(frame, content_area, selections.settings(), app);
         }
     };
 }
