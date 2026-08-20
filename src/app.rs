@@ -1,12 +1,19 @@
 // src/app.rs
 
 use super::boot::restore;
-use super::rendering::Data;
 
 use crossterm::event::KeyCode;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io::Stdout;
 use std::ops::{Deref, DerefMut};
+
+pub struct Data {
+    pub pwr: u16,
+    pub ltpwr: u16,
+    pub cadence: u16,
+    pub hr: u16,
+    pub speed: f32,
+}
 
 pub struct TUIGuard {
     pub tui: Terminal<CrosstermBackend<Stdout>>,
@@ -144,15 +151,15 @@ impl Selections {
             settings_select: SettingsSelection::default(),
         }
     }
-    pub fn main(&self) -> &MainSelection {
-        &self.main_select
-    }
-    pub fn control(&self) -> &ControlSelection {
-        &self.control_select
-    }
-    pub fn database(&self) -> &DatabaseSelection {
-        &self.database_select
-    }
+    //pub fn main(&self) -> &MainSelection {
+    //    &self.main_select
+    //}
+    //pub fn control(&self) -> &ControlSelection {
+    //    &self.control_select
+    //}
+    //pub fn database(&self) -> &DatabaseSelection {
+    //    &self.database_select
+    //}
     pub fn settings(&self) -> &SettingsSelection {
         &self.settings_select
     }

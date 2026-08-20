@@ -1,26 +1,13 @@
 // src/rendering.rs
 
-use super::app::{App, Screen, Selections, SettingsSelection};
+use super::app::{App, Data, Screen, Selections, SettingsSelection};
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Color::White;
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-
-struct PCHS {
-    power: Rect,
-    cadence: Rect,
-    hr: Rect,
-    speed: Rect,
-}
-
-pub struct Data {
-    pub power: u16,
-    pub cadence: u16,
-    pub hr: u16,
-    pub speed: f32,
-}
 
 // ====================================
 // --------- Helper Functions ---------
@@ -55,8 +42,36 @@ fn footer_spans(current: Screen) -> Vec<Span<'static>> {
     vec![mainspan, conspan, dbspan, setspan, quitspan]
 }
 
+// Get color from HR zone
+fn hr2color(hr: u16) -> Color {
+    match hr {
+        0..=113 => Color::White,
+        114..=149 => Color::Gray,
+        150..=170 => Color::LightBlue,
+        171..=180 => Color::Green,
+        181..=191 => Color::Yellow,
+        192..=220 => Color::Red,
+        _ => Color::White,
+    }
+}
+
+// Convert power + lactate power to color for rendering
+fn pwr2color(pwr: u16, ltpwr: u16) -> Color {
+    let ltpwr_percentage = (ltpwr as f32 / pwr as f32) * 100.0;
+    match ltpwr_percentage.round() {
+        0.0..=54.0 => Color::LightBlue,
+        55.0..=75.0 => Color::Blue,
+        76.0..=87.0 => Color::Green,
+        88.0..=94.0 => Color::Yellow,
+        95.0..=105.0 => Color::Rgb(255, 128, 0), // Orange
+        106.0..=120.0 => Color::Red,
+        121.0..=1000.0 => Color::Rgb(255, 192, 203), // Pink
+        _ => Color::White,
+    }
+}
+
 // ====================================
-// --- Page-specific Draw Functions ---
+// --- Page-Specific Draw Functions ---
 // ====================================
 
 fn main_draw(frame: &mut Frame, area: Rect, data: &Data) {
@@ -82,7 +97,7 @@ fn main_draw(frame: &mut Frame, area: Rect, data: &Data) {
 
     // Render Top HUD Stats
     frame.render_widget(
-        Paragraph::new(format!(" ⚡ {} W", data.power)).block(Block::new().borders(Borders::ALL)),
+        Paragraph::new(format!(" ⚡ {} W", data.pwr)).block(Block::new().borders(Borders::ALL)),
         hud_layout[0],
     );
     frame.render_widget(
@@ -128,25 +143,43 @@ fn control_draw(frame: &mut Frame, area: Rect, data: &Data) {
 
     // HUD data displays
     let pwrblck = Paragraph::new(Line::from(vec![Span::styled(
-        format!("Power: {}", data.power),
+        format!("{} Watts", data.pwr),
         Style::default(),
     )]))
-    .block(Block::new().borders(Borders::ALL));
+    .block(
+        Block::new()
+            .borders(Borders::ALL)
+            .title(" Power ")
+            .fg(pwr2color(data.pwr, data.ltpwr)),
+    );
+
     let hrblck = Paragraph::new(Line::from(vec![Span::styled(
-        format!("HR: {}", data.hr),
+        format!("{} BPM", data.hr),
         Style::default(),
     )]))
-    .block(Block::new().borders(Borders::ALL));
+    .block(
+        Block::new()
+            .borders(Borders::ALL)
+            .title(" Heart Rate ")
+            .fg(hr2color(data.hr)),
+    );
+
     let rpmblck = Paragraph::new(Line::from(vec![Span::styled(
-        format!("RPM: {}", data.cadence),
+        format!("{} RPM", data.cadence),
         Style::default(),
     )]))
-    .block(Block::new().borders(Borders::ALL));
+    .block(Block::new().borders(Borders::ALL).title(" Cadence "));
+
     let kmhblck = Paragraph::new(Line::from(vec![Span::styled(
-        format!("KMH: {}", data.speed),
+        format!("{} km/h", data.speed),
         Style::default(),
     )]))
-    .block(Block::new().borders(Borders::ALL));
+    .block(
+        Block::new()
+            .borders(Borders::ALL)
+            .title(" Speed ")
+            .fg(White),
+    );
 
     frame.render_widget(pwrblck, pwrrect);
     frame.render_widget(hrblck, hrrect);

@@ -4,10 +4,10 @@ mod app;
 mod boot;
 mod rendering;
 
-use app::{Action, App};
+use app::{Action, App, Data};
 use boot::init;
 use crossterm::event::{Event, KeyEventKind, read};
-use rendering::{Data, draw};
+use rendering::draw;
 use std::io;
 
 fn main() -> io::Result<()> {
@@ -16,10 +16,11 @@ fn main() -> io::Result<()> {
 
     // Load fake data - Make a function of this and update inside the loop? async
     let data = Data {
-        power: 300,
+        pwr: 1000,
+        ltpwr: 250,
         cadence: 95,
-        hr: 180,
-        speed: 42.5,
+        hr: 208,
+        speed: 50.5,
     };
 
     let mut app = App::new(data);
