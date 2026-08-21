@@ -2,9 +2,10 @@
 
 mod app;
 mod boot;
+mod data;
 mod rendering;
 
-use app::{Action, App, Data};
+use app::{Action, App, LiveData, UserData};
 use boot::init;
 use crossterm::event::{Event, KeyEventKind, read};
 use rendering::draw;
@@ -15,15 +16,19 @@ fn main() -> io::Result<()> {
     let mut terminal = init()?;
 
     // Load fake data - Make a function of this and update inside the loop? async
-    let data = Data {
+    let livedata = LiveData {
         pwr: 1000,
-        ltpwr: 250,
-        cadence: 95,
+        rpm: 95,
         hr: 208,
-        speed: 50.5,
+        vel: 50.5,
     };
 
-    let mut app = App::new(data);
+    let userdata = UserData {
+        ltpwr: 250,
+        maxhr: 208,
+    };
+
+    let mut app = App::new(livedata, userdata);
 
     loop {
         terminal.draw(|frame| draw(frame, &app, app.selections()))?;

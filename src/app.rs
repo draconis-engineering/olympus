@@ -8,37 +8,34 @@ use std::io::Stdout;
 use std::ops::{Deref, DerefMut};
 use std::u16;
 
-pub struct Data {
+// Live data from device
+pub struct LiveData {
     pub pwr: u16,
-    pub ltpwr: u16,
-    pub cadence: u16,
+    pub rpm: u16,
     pub hr: u16,
-    pub speed: f32,
+    pub vel: f32,
 }
 
-impl Data {
-    pub fn chartdata(&self) -> (&u16, &f32) {
-        (&self.pwr, &self.speed)
-    }
+// Data for calculating things like power/hr zones, etc
+pub struct UserData {
+    pub ltpwr: u16,
+    pub maxhr: u16,
 }
 
 pub struct TUIGuard {
     pub tui: Terminal<CrosstermBackend<Stdout>>,
 }
-
 impl Drop for TUIGuard {
     fn drop(&mut self) {
         let _ = restore();
     }
 }
-
 impl Deref for TUIGuard {
     type Target = Terminal<CrosstermBackend<Stdout>>;
     fn deref(&self) -> &Terminal<CrosstermBackend<Stdout>> {
         &self.tui
     }
 }
-
 impl DerefMut for TUIGuard {
     fn deref_mut(&mut self) -> &mut Terminal<CrosstermBackend<Stdout>> {
         &mut self.tui
@@ -48,27 +45,36 @@ impl DerefMut for TUIGuard {
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum Screen {
     #[default]
-    Main, // Mainpage
-    Control,  // Mission Control
-    Database, // .FIT Database
-    Settings, // Settings -> future json settings loaded with boot.rs
+    Main,
+    Control,
+    Database,
+    Settings,
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum MainSelection {
     #[default]
     Main,
+    Route,
+    Workouts,
+    Settings,
 }
 
 impl MainSelection {
     pub fn next(&mut self) {
         *self = match *self {
-            MainSelection::Main => MainSelection::Main,
+            MainSelection::Main => MainSelection::Route,
+            MainSelection::Route => MainSelection::Workouts,
+            MainSelection::Workouts => MainSelection::Settings,
+            MainSelection::Settings => MainSelection::Main,
         };
     }
     pub fn prev(&mut self) {
         *self = match *self {
-            MainSelection::Main => MainSelection::Main,
+            MainSelection::Main => MainSelection::Settings,
+            MainSelection::Route => MainSelection::Main,
+            MainSelection::Workouts => MainSelection::Route,
+            MainSelection::Settings => MainSelection::Workouts,
         };
     }
 }
@@ -78,7 +84,6 @@ pub enum ControlSelection {
     #[default]
     Main,
 }
-
 impl ControlSelection {
     pub fn next(&mut self) {
         *self = match *self {
@@ -97,7 +102,6 @@ pub enum DatabaseSelection {
     #[default]
     Main,
 }
-
 impl DatabaseSelection {
     pub fn next(&mut self) {
         *self = match *self {
@@ -120,7 +124,6 @@ pub enum SettingsSelection {
     System,
     User,
 }
-
 impl SettingsSelection {
     pub fn next(&mut self) {
         *self = match *self {
@@ -196,13 +199,15 @@ pub enum Action {
 
 pub struct App {
     screen: Screen,
-    data: Data,
+    livedata: LiveData,
+    userdata: UserData,
     selections: Selections,
 }
 impl App {
-    pub fn new(data: Data) -> Self {
+    pub fn new(livedata: LiveData, userdata: UserData) -> Self {
         Self {
-            data,
+            livedata,
+            userdata,
             screen: Screen::default(),
             selections: Selections::new(),
         }
@@ -210,8 +215,11 @@ impl App {
     pub fn screen(&self) -> Screen {
         self.screen
     }
-    pub fn data(&self) -> &Data {
-        &self.data
+    pub fn livedata(&self) -> &LiveData {
+        &self.livedata
+    }
+    pub fn userdata(&self) -> &UserData {
+        &self.userdata
     }
     pub fn selections(&self) -> &Selections {
         &self.selections
