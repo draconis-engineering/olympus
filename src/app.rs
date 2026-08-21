@@ -18,6 +18,7 @@ pub struct LiveData {
 
 // Data for calculating things like power/hr zones, etc
 pub struct UserData {
+    pub user: String,
     pub ltpwr: u16,
     pub maxhr: u16,
 }
@@ -54,27 +55,33 @@ pub enum Screen {
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum MainSelection {
     #[default]
-    Main,
-    Route,
+    NewRide,
+    Control,
     Workouts,
     Settings,
+    Stats,
+    Quit,
 }
 
 impl MainSelection {
     pub fn next(&mut self) {
         *self = match *self {
-            MainSelection::Main => MainSelection::Route,
-            MainSelection::Route => MainSelection::Workouts,
+            MainSelection::NewRide => MainSelection::Control,
+            MainSelection::Control => MainSelection::Workouts,
             MainSelection::Workouts => MainSelection::Settings,
-            MainSelection::Settings => MainSelection::Main,
+            MainSelection::Settings => MainSelection::Stats,
+            MainSelection::Stats => MainSelection::Quit,
+            MainSelection::Quit => MainSelection::NewRide,
         };
     }
     pub fn prev(&mut self) {
         *self = match *self {
-            MainSelection::Main => MainSelection::Settings,
-            MainSelection::Route => MainSelection::Main,
-            MainSelection::Workouts => MainSelection::Route,
+            MainSelection::NewRide => MainSelection::Quit,
+            MainSelection::Control => MainSelection::NewRide,
+            MainSelection::Workouts => MainSelection::Control,
             MainSelection::Settings => MainSelection::Workouts,
+            MainSelection::Stats => MainSelection::Settings,
+            MainSelection::Quit => MainSelection::Stats,
         };
     }
 }
@@ -231,6 +238,12 @@ impl App {
     pub fn devices(&self) -> &str {
         "Wahoo Kickr Core 2 - CONNECTED"
     }
+    pub fn user(&self) -> &str {
+        &self.userdata.user
+    }
+    pub fn connection(&self) -> &str {
+        "CONNECTED - Wahoo Kickr Core 2"
+    }
 
     pub fn handle_key_press(&mut self, key_code: KeyCode, screen: Screen) -> Action {
         match key_code {
@@ -259,7 +272,13 @@ impl App {
                 Action::Continue
             }
 
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
+            KeyCode::Enter => {
+                if self.selections().main() == &MainSelection::Quit {
+                    Action::Quit
+                } else {
+                    Action::Continue
+                }
+            }
             _ => Action::Continue,
         }
     }

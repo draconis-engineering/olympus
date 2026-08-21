@@ -24,6 +24,7 @@ fn main() -> io::Result<()> {
     };
 
     let userdata = UserData {
+        user: "Simon Stordal Amundgård".to_string(),
         ltpwr: 250,
         maxhr: 208,
     };

@@ -8,62 +8,58 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 // ====================================
 // --------- Helper Functions ---------
 // ====================================
 
 // Footer rendering function
-fn footer_spans(current: Screen) -> Vec<Span<'static>> {
-    // Default style
-    let default_style = Style::default();
-    let quit_style = Style::default().fg(Color::Red);
-    let sep = Span::styled(" | ", default_style);
-
-    // Initialize un-highlighted
-    let mut mainspan = Span::styled("[ M ] Main page", default_style);
-    let mut conspan = Span::styled("[ C ] Control panel", default_style);
-    let mut dbspan = Span::styled("[ D ] Database", default_style);
-    let mut setspan = Span::styled("[ S ] Settings", default_style);
-    let quitspan = Span::styled("[ Q ] Quit", quit_style);
-
-    // Highlighted style
-    let active_style = Style::default()
+fn footer(current: Screen, app: &App) -> Paragraph<'_> {
+    let style = Style::default()
         .add_modifier(Modifier::BOLD)
         .fg(Color::Green);
+    let sep = Span::styled(" | ", style.fg(Color::Gray));
+
+    // Initialize un-highlighted
+    let mainspan = Span::styled(" Main page", style);
+    let conspan = Span::styled(" Control panel", style);
+    let dbspan = Span::styled(" Database", style);
+    let setspan = Span::styled(" Settings", style);
+    let userspan = Span::styled(app.user(), style);
+    let connspan = Span::styled(app.connection(), style);
+
+    let current_page: Span<'_>;
 
     // Highlight current screen
     match current {
-        Screen::Main => mainspan = mainspan.style(active_style),
-        Screen::Control => conspan = conspan.style(active_style),
-        Screen::Database => dbspan = dbspan.style(active_style),
-        Screen::Settings => setspan = setspan.style(active_style),
+        Screen::Main => current_page = mainspan,
+        Screen::Control => current_page = conspan,
+        Screen::Database => current_page = dbspan,
+        Screen::Settings => current_page = setspan,
     }
 
-    vec![
-        mainspan,
-        sep.clone(),
-        conspan,
-        sep.clone(),
-        dbspan,
-        sep.clone(),
-        setspan,
-        sep.clone(),
-        quitspan,
-    ]
+    let footerspan = vec![current_page, sep.clone(), userspan, sep.clone(), connspan];
+    let footerblock = Block::default()
+        .borders(Borders::LEFT | Borders::RIGHT | Borders::TOP)
+        .fg(Color::DarkGray)
+        .border_type(BorderType::Rounded);
+    let footerline = Line::from(footerspan);
+
+    Paragraph::new(footerline).block(footerblock)
 }
 
 // Get color from HR zone | Add softcoded HRZs or percentage based zones
-fn hr2color(hr: u16) -> (Color, u16) {
+fn hr2color(hr: u16, maxhr: u16) -> (Color, u16, f32) {
+    let percent = (hr as f32 / maxhr as f32) * 100.0;
     match hr {
-        0..=113 => (Color::White, 0),
-        114..=149 => (Color::Gray, 1),
-        150..=170 => (Color::LightBlue, 2),
-        171..=180 => (Color::Green, 3),
-        181..=191 => (Color::Yellow, 4),
-        192..=220 => (Color::Red, 5),
-        _ => (Color::White, 0),
+        0..=113 => (Color::White, 0, percent.round()),
+        114..=149 => (Color::Gray, 1, percent.round()),
+        150..=170 => (Color::LightBlue, 2, percent.round()),
+        171..=180 => (Color::Green, 3, percent.round()),
+        181..=191 => (Color::Yellow, 4, percent.round()),
+        192..=220 => (Color::Red, 5, percent.round()),
+        _ => (Color::White, 0, percent.round()),
     }
 }
 
@@ -88,62 +84,12 @@ fn pwr2color(pwr: u16, ltpwr: u16) -> (Color, u16) {
 // ====================================
 
 fn main_draw(frame: &mut Frame, area: Rect, selected: &MainSelection, app: &App) {
-    let livedata = app.livedata();
-    let userdata = app.userdata();
+    let _livedata = app.livedata();
+    let _userdata = app.userdata();
 
-    // Split screen vertically into Header, Main Dashboard, and Footer Hints
-    let [hud, main, footer] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3), // Top HUD Header
-            Constraint::Min(12),   // Game Title & Navigation
-            Constraint::Length(3), // Hotkey Action Hints
-        ])
-        .areas(area);
-
-    // --- TOP HUD HEADER ---
-    let [pwr, rpm, bpm, kmh] = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-        ])
-        .areas(hud);
-
-    // --- HELPERS FOR COLORS & ZONES ---
-    let (pwrcolor, pwrzone) = pwr2color(livedata.pwr, userdata.ltpwr);
-    let (hrcolor, hrzone) = hr2color(livedata.hr);
-
-    frame.render_widget(
-        Paragraph::new(format!(" ⚡ {} W | Zone {}", livedata.pwr, pwrzone)).block(
-            Block::new()
-                .borders(Borders::ALL)
-                .fg(pwrcolor)
-                .title(" Power "),
-        ),
-        pwr,
-    );
-    frame.render_widget(
-        Paragraph::new(format!(" 🔄 {} RPM", livedata.rpm))
-            .block(Block::new().borders(Borders::ALL).title(" Cadence ")),
-        rpm,
-    );
-    frame.render_widget(
-        Paragraph::new(format!(" ❤️ {} BPM | Zone {}", livedata.hr, hrzone)).block(
-            Block::new()
-                .borders(Borders::ALL)
-                .fg(hrcolor)
-                .title(" Heart Rate "),
-        ),
-        bpm,
-    );
-    frame.render_widget(
-        Paragraph::new(format!(" 💨 {:.1} KM/H", livedata.vel))
-            .block(Block::new().borders(Borders::ALL).title(" Speed ")),
-        kmh,
-    );
+    let gray = Style::default().fg(Color::Gray);
+    let cyan = Style::default().fg(Color::Cyan);
+    let red = Style::default().fg(Color::Red);
 
     // --- MAIN MENU PANEL ---
     // Split the main space vertically to center-align the menu components
@@ -155,33 +101,33 @@ fn main_draw(frame: &mut Frame, area: Rect, selected: &MainSelection, app: &App)
             Constraint::Length(1), // Spacer
             Constraint::Min(3),    // Navigation Options
         ])
-        .areas(main);
+        .areas(area);
 
     // Multi-line slant ASCII title
     let ascii_logo = vec![
         Line::from(Span::styled(
             "  ____  _ __     ____  __ ____  _   _ ____  ",
-            Style::default().fg(Color::Cyan),
+            cyan,
         )),
         Line::from(Span::styled(
             " / __ \\| |\\ \\   / /  \\/  |  _ \\| | | / ___| ",
-            Style::default().fg(Color::Cyan),
+            cyan,
         )),
         Line::from(Span::styled(
             "| |  | | | \\ \\ / /| |\\/| | |_) | | | \\___ \\ ",
-            Style::default().fg(Color::LightCyan),
+            cyan,
         )),
         Line::from(Span::styled(
             "| |__| | |__| \\ / | |  | |  __/| |_| |___) |",
-            Style::default().fg(Color::Blue),
+            cyan,
         )),
         Line::from(Span::styled(
             " \\____/|_____|_|  |_|  |_|_|    \\___/|____/ ",
-            Style::default().fg(Color::LightBlue),
+            cyan,
         )),
         Line::from(Span::styled(
             "   -- FREE OPEN-SOURCE TURBO TRAINER - BY DRACONIS --   ",
-            Style::default().fg(Color::DarkGray),
+            gray,
         )),
     ];
 
@@ -192,100 +138,43 @@ fn main_draw(frame: &mut Frame, area: Rect, selected: &MainSelection, app: &App)
 
     // Main menu selection text
     let mut menu_text = vec![
-        Line::from(Span::styled(
-            "     START NEW RIDE     ",
-            Style::default().fg(Color::Gray),
-        )),
-        Line::from(Span::styled(
-            " SELECT ROUTE (WATOPIA) ",
-            Style::default().fg(Color::Gray),
-        )),
-        Line::from(Span::styled(
-            "     PAST  WORKOUTS     ",
-            Style::default().fg(Color::Gray),
-        )),
-        Line::from(Span::styled(
-            "   SETTINGS & SENSORS   ",
-            Style::default().fg(Color::Gray),
-        )),
+        Line::from(Span::styled("START NEW RIDE", gray)),
+        Line::from(Span::styled("CONTROL PANEL", gray)),
+        Line::from(Span::styled("WORKOUT DATABASE", gray)),
+        Line::from(Span::styled("SETTINGS & SENSORS", gray)),
+        Line::from(Span::styled("STATS & RECORDS", gray)),
+        Line::from(Span::styled("QUIT", red)),
     ];
 
     // Highlight the selected menu item
+    let selected_style = Style::default().fg(Color::White).bg(Color::Green);
     match selected {
-        MainSelection::Main => menu_text[0].spans[0].style = Style::default().fg(Color::Green),
-        MainSelection::Route => menu_text[1].spans[0].style = Style::default().fg(Color::Green),
-        MainSelection::Workouts => menu_text[2].spans[0].style = Style::default().fg(Color::Green),
-        MainSelection::Settings => menu_text[3].spans[0].style = Style::default().fg(Color::Green),
+        MainSelection::NewRide => menu_text[0].spans[0].style = selected_style,
+        MainSelection::Control => menu_text[1].spans[0].style = selected_style,
+        MainSelection::Workouts => menu_text[2].spans[0].style = selected_style,
+        MainSelection::Settings => menu_text[3].spans[0].style = selected_style,
+        MainSelection::Stats => menu_text[4].spans[0].style = selected_style,
+        MainSelection::Quit => menu_text[5].spans[0].style = selected_style,
     }
 
     frame.render_widget(
         Paragraph::new(menu_text).alignment(Alignment::Center),
         navopt,
     );
-
-    // --- NEW: FOOTER BUTTON HINTS ---
-    let hint_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(33),
-            Constraint::Percentage(34),
-            Constraint::Percentage(33),
-        ])
-        .split(footer);
-
-    // Render 3 cleanly aligned gamepad-style text blocks at the bottom row
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" Press ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                "[Enter]",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" to launch session", Style::default().fg(Color::Gray)),
-        ]))
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
-        hint_layout[0],
-    );
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" Use ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                "[↑/↓]",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" to change selection", Style::default().fg(Color::Gray)),
-        ]))
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
-        hint_layout[1],
-    );
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" Press ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                "[Esc]",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" to exit app", Style::default().fg(Color::Gray)),
-        ]))
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
-        hint_layout[2],
-    );
 }
 
-fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app: &App) {
+fn control_draw(frame: &mut Frame, area: Rect, _selected: &ControlSelection, app: &App) {
+    // Data
     let livedata = app.livedata();
     let userdata = app.userdata();
 
-    // 1. Core Interface Layout Split
+    // Colors
+    let gray = Style::default().fg(Color::Gray);
+    let dark_gray = Style::default().fg(Color::DarkGray);
+    let white = Style::default().fg(Color::White);
+    let bold_white = white.add_modifier(Modifier::BOLD);
+
+    // Core Interface Layout Split
     let [hud_area, main_area, footer_area] = Layout::vertical([
         Constraint::Length(5), // Extended HUD (Allows larger stat fonts)
         Constraint::Min(10),   // Split Workout Tracking Panels
@@ -293,7 +182,7 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
     ])
     .areas(area);
 
-    // 2. High-Visibility HUD Layout
+    // High-Visibility HUD Layout
     let [pwr_rect, hr_rect, rpm_rect, kmh_rect] = Layout::horizontal([
         Constraint::Percentage(25),
         Constraint::Percentage(25),
@@ -303,8 +192,6 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
     .areas(hud_area);
 
     let (pwrcolor, pwrzone) = pwr2color(livedata.pwr, userdata.ltpwr);
-    let (hrcolor, hrzone) = hr2color(livedata.hr);
-    let defaultstyle = Style::default().fg(Color::DarkGray);
 
     // Bigger, padded layout lines for easy reading while sweating
     frame.render_widget(
@@ -315,7 +202,7 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
                     format!(" ⚡ {} ", livedata.pwr),
                     Style::default().fg(pwrcolor).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("W", defaultstyle),
+                Span::styled("W", dark_gray),
             ])
             .alignment(Alignment::Center),
             Line::from(Span::styled(
@@ -333,29 +220,31 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
         pwr_rect,
     );
 
+    let (hrcolor, hrzone, hrmaxprcnt) = hr2color(livedata.hr, userdata.maxhr);
+    let hrclrstyle = Style::default().fg(hrcolor);
+    let hrblock = Block::new()
+        .borders(Borders::ALL)
+        .title(" Heart Rate ")
+        .fg(hrcolor);
+
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(""),
             Line::from(vec![
                 Span::styled(
                     format!(" ❤️ {} ", livedata.hr),
-                    Style::default().fg(hrcolor).add_modifier(Modifier::BOLD),
+                    hrclrstyle.add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("BPM", defaultstyle),
+                Span::styled("BPM", dark_gray),
             ])
             .alignment(Alignment::Center),
             Line::from(Span::styled(
-                format!("ZONE {}", hrzone),
-                Style::default().fg(hrcolor),
+                format!("ZONE {} - {:.0}%", hrzone, hrmaxprcnt),
+                hrclrstyle,
             ))
             .alignment(Alignment::Center),
         ])
-        .block(
-            Block::new()
-                .borders(Borders::ALL)
-                .title(" Heart Rate ")
-                .fg(hrcolor),
-        ),
+        .block(hrblock),
         hr_rect,
     );
 
@@ -363,13 +252,8 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
         Paragraph::new(vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled(
-                    format!(" 🔄 {} ", livedata.rpm),
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled("RPM", defaultstyle),
+                Span::styled(format!(" 🔄 {} ", livedata.rpm), bold_white),
+                Span::styled("RPM", dark_gray),
             ])
             .alignment(Alignment::Center),
         ])
@@ -387,7 +271,7 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("KM/H", defaultstyle),
+                Span::styled("KM/H", dark_gray),
             ])
             .alignment(Alignment::Center),
         ])
@@ -409,39 +293,29 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
     let workout_metrics = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  ⏱  ELAPSED TIME:   ", defaultstyle),
-            Span::styled(
-                "00:42:18",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("  ⏱  ELAPSED TIME:   ", dark_gray),
+            Span::styled("00:42:18", bold_white),
         ]),
         Line::from(vec![
-            Span::styled("  🏁 DISTANCE:       ", defaultstyle),
-            Span::styled(
-                "21.4 km",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("  🏁 DISTANCE:       ", dark_gray),
+            Span::styled("21.4 km", bold_white),
         ]),
         Line::from(vec![
-            Span::styled("  ⛰  ELEVATION GAIN: ", defaultstyle),
+            Span::styled("  ⛰  ELEVATION GAIN: ", dark_gray),
             Span::styled("+312 m", Style::default().fg(Color::LightGreen)),
         ]),
         Line::from(vec![
-            Span::styled("  🔥 CALORIES:       ", defaultstyle),
+            Span::styled("  🔥 CALORIES:       ", dark_gray),
             Span::styled("542 kcal", Style::default().fg(Color::LightRed)),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  --- TARGET INTERVAL ---", defaultstyle)),
+        Line::from(Span::styled("  --- TARGET INTERVAL ---", dark_gray)),
         Line::from(vec![
-            Span::styled("  🎯 CURRENT GOAL:   ", defaultstyle),
+            Span::styled("  🎯 CURRENT GOAL:   ", dark_gray),
             Span::styled("240W for 5 mins", Style::default().fg(Color::Yellow)),
         ]),
         Line::from(vec![
-            Span::styled("  ⏳ REMAINING:      ", defaultstyle),
+            Span::styled("  ⏳ REMAINING:      ", dark_gray),
             Span::styled(
                 "02:15",
                 Style::default()
@@ -465,50 +339,50 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
         Line::from(""),
         Line::from(Span::styled(
             "                     /  *  \\                     ",
-            defaultstyle,
+            dark_gray,
         )),
         Line::from(Span::styled(
             "                    /   *   \\                    ",
-            defaultstyle,
+            dark_gray,
         )),
         Line::from(Span::styled(
             "                   /    *    \\                   ",
-            defaultstyle,
+            dark_gray,
         )),
         Line::from(vec![
-            Span::styled("  [Rider A (+0:04)] ", Style::default().fg(Color::Gray)),
-            Span::styled("/     *     \\", defaultstyle),
+            Span::styled("  [Rider A (+0:04)] ", gray),
+            Span::styled("/     *     \\", dark_gray),
         ]),
         Line::from(Span::styled(
             "                 /      *      \\                 ",
-            defaultstyle,
+            dark_gray,
         )),
         Line::from(vec![
-            Span::styled("                /       ", defaultstyle),
+            Span::styled("                /       ", dark_gray),
             Span::styled(
                 "▲ YOU",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("       \\                ", defaultstyle),
+            Span::styled("       \\                ", dark_gray),
         ]),
         Line::from(Span::styled(
             "              /         *         \\              ",
-            defaultstyle,
+            dark_gray,
         )),
         Line::from(vec![
-            Span::styled("             /          *          \\   ", defaultstyle),
+            Span::styled("             /          *          \\   ", dark_gray),
             Span::styled("[Gradient: 6.5%]", Style::default().fg(Color::LightRed)),
         ]),
         Line::from(Span::styled(
             "___________/____________*____________\\___________",
-            defaultstyle,
+            dark_gray,
         )),
         Line::from(""),
         Line::from(Span::styled(
             "  📍 Location: Watopia Epic KOM Pass (Sector 3)",
-            defaultstyle,
+            dark_gray,
         )),
     ];
 
@@ -537,7 +411,7 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("Pause Ride", Style::default().fg(Color::Gray)),
+            Span::styled("Pause Ride", gray),
         ]))
         .alignment(Alignment::Center)
         .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
@@ -552,7 +426,7 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("Toggle Map Mode", Style::default().fg(Color::Gray)),
+            Span::styled("Toggle Map Mode", gray),
         ]))
         .alignment(Alignment::Center)
         .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
@@ -565,7 +439,7 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
                 " [Esc] ",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("End & Save Workout", Style::default().fg(Color::Gray)),
+            Span::styled("End & Save Workout", gray),
         ]))
         .alignment(Alignment::Center)
         .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
@@ -573,11 +447,12 @@ fn control_draw(frame: &mut Frame, area: Rect, selected: &ControlSelection, app:
     );
 }
 
-fn database_draw(frame: &mut Frame, area: Rect, selected: &DatabaseSelection, app: &App) {
+fn database_draw(frame: &mut Frame, area: Rect, _selected: &DatabaseSelection, _app: &App) {
     // Colors
     let gray = Style::default().fg(Color::Gray);
     let dark_gray = Style::default().fg(Color::DarkGray);
     let white = Style::default().fg(Color::White);
+    let bold_white = white.add_modifier(Modifier::BOLD);
 
     // Base Layout Structure
     let [sidebar_area, list_area] =
@@ -593,7 +468,7 @@ fn database_draw(frame: &mut Frame, area: Rect, selected: &DatabaseSelection, ap
 
     // --- SIDEBAR BLOCK 1: SEARCH BAR ---
     let search_text = Line::from(vec![
-        Span::styled(" Watopia", Style::default().fg(Color::White)),
+        Span::styled(" Watopia", white),
         Span::styled("█", Style::default().fg(Color::Yellow)), // Simulated cursor
     ]);
     frame.render_widget(
@@ -644,10 +519,7 @@ fn database_draw(frame: &mut Frame, area: Rect, selected: &DatabaseSelection, ap
     // --- SIDEBAR BLOCK 3: SELECTED WORKOUT PREVIEW (Formerly etc) ---
     // Shows the exact power step breakdown for whatever row is currently picked
     let preview_lines = vec![
-        Line::from(Span::styled(
-            " \"SST Short\" Profile Preview:",
-            Style::default().fg(Color::Gray),
-        )),
+        Line::from(Span::styled(" \"SST Short\" Profile Preview:", gray)),
         Line::from(""),
         Line::from(vec![
             Span::styled(" ■ Warmup: ", Style::default().fg(Color::LightGreen)),
@@ -699,12 +571,7 @@ fn database_draw(frame: &mut Frame, area: Rect, selected: &DatabaseSelection, ap
                 " ▶  [VO2 Max] ",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                "Gorilla Intervals        ",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("Gorilla Intervals        ", bold_white),
             Span::styled("⏱ 45 mins  ", gray),
             Span::styled("⚡ 320 TSS", dark_gray),
         ]),
@@ -715,10 +582,7 @@ fn database_draw(frame: &mut Frame, area: Rect, selected: &DatabaseSelection, ap
         Line::from(""),
         Line::from(vec![
             Span::styled(" ⚡  [SweetSpot] ", Style::default().fg(Color::Yellow)),
-            Span::styled(
-                "SST Short (Active Plan) ",
-                Style::default().fg(Color::White),
-            ),
+            Span::styled("SST Short (Active Plan) ", white),
             Span::styled("⏱ 50 mins  ", gray),
             Span::styled("⚡ 210 TSS", dark_gray),
         ]),
@@ -774,7 +638,7 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection, ap
     });
 
     // Slice the inner sidebar area vertically for text item groups
-    let [general, appearance, bluetooth, system, user, etc] = Layout::vertical([
+    let [general, appearance, bluetooth, system, user, _etc] = Layout::vertical([
         Constraint::Length(3), // Extra vertical height gives visual breathing room
         Constraint::Length(3),
         Constraint::Length(3),
@@ -886,26 +750,18 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection, ap
 
 pub fn draw(frame: &mut Frame, app: &App, selections: &Selections) {
     // Properly split the screen area into two horizontal sections
-    let [content_area, footer_area] =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
+    let [main_area, footer_area] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(2)]).areas(frame.area());
 
     // Render footer
-    let footer = Paragraph::new(Line::from(footer_spans(app.screen())));
+    let footer = footer(app.screen(), app);
     frame.render_widget(footer, footer_area);
 
     // Render content
     match app.screen() {
-        Screen::Main => {
-            main_draw(frame, content_area, selections.main(), app);
-        }
-        Screen::Control => {
-            control_draw(frame, content_area, selections.control(), app);
-        }
-        Screen::Database => {
-            database_draw(frame, content_area, selections.database(), app);
-        }
-        Screen::Settings => {
-            settings_draw(frame, content_area, selections.settings(), app);
-        }
+        Screen::Main => main_draw(frame, main_area, selections.main(), app),
+        Screen::Control => control_draw(frame, main_area, selections.control(), app),
+        Screen::Database => database_draw(frame, main_area, selections.database(), app),
+        Screen::Settings => settings_draw(frame, main_area, selections.settings(), app),
     };
 }
