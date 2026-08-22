@@ -50,6 +50,7 @@ pub enum Screen {
     Control,
     Database,
     Settings,
+    Stats,
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
@@ -152,12 +153,35 @@ impl SettingsSelection {
     }
 }
 
+#[derive(Default, PartialEq, Clone, Copy)]
+pub enum StatsSelection {
+    #[default]
+    Overview,
+    Rides,
+}
+
+impl StatsSelection {
+    pub fn next(&mut self) {
+        *self = match *self {
+            StatsSelection::Overview => StatsSelection::Rides,
+            StatsSelection::Rides => StatsSelection::Overview,
+        };
+    }
+    pub fn prev(&mut self) {
+        *self = match *self {
+            StatsSelection::Overview => StatsSelection::Rides,
+            StatsSelection::Rides => StatsSelection::Overview,
+        };
+    }
+}
+
 #[derive(PartialEq)]
 pub struct Selections {
     pub main_select: MainSelection,
     pub control_select: ControlSelection,
     pub database_select: DatabaseSelection,
     pub settings_select: SettingsSelection,
+    pub stats_select: StatsSelection,
 }
 impl Selections {
     pub fn new() -> Self {
@@ -166,6 +190,7 @@ impl Selections {
             control_select: ControlSelection::default(),
             database_select: DatabaseSelection::default(),
             settings_select: SettingsSelection::default(),
+            stats_select: StatsSelection::default(),
         }
     }
     pub fn main(&self) -> &MainSelection {
@@ -180,12 +205,16 @@ impl Selections {
     pub fn settings(&self) -> &SettingsSelection {
         &self.settings_select
     }
+    pub fn stats(&self) -> &StatsSelection {
+        &self.stats_select
+    }
     pub fn next(&mut self, screen: Screen) {
         match screen {
             Screen::Main => self.main_select.next(),
             Screen::Control => self.control_select.next(),
             Screen::Database => self.database_select.next(),
             Screen::Settings => self.settings_select.next(),
+            Screen::Stats => self.stats_select.next(),
         }
     }
     pub fn prev(&mut self, screen: Screen) {
@@ -194,6 +223,7 @@ impl Selections {
             Screen::Control => self.control_select.prev(),
             Screen::Database => self.database_select.prev(),
             Screen::Settings => self.settings_select.prev(),
+            Screen::Stats => self.stats_select.prev(),
         }
     }
 }
@@ -272,13 +302,29 @@ impl App {
                 Action::Continue
             }
 
-            KeyCode::Enter => {
-                if self.selections().main() == &MainSelection::Quit {
-                    Action::Quit
-                } else {
-                    Action::Continue
-                }
-            }
+            KeyCode::Enter => match self.screen() {
+                Screen::Main => match self.selections().main() {
+                    MainSelection::NewRide => Action::Continue,
+                    MainSelection::Control => {
+                        self.screen = Screen::Control;
+                        Action::Continue
+                    }
+                    MainSelection::Workouts => {
+                        self.screen = Screen::Database;
+                        Action::Continue
+                    }
+                    MainSelection::Settings => {
+                        self.screen = Screen::Settings;
+                        Action::Continue
+                    }
+                    MainSelection::Stats => {
+                        self.screen = Screen::Stats;
+                        Action::Continue
+                    }
+                    MainSelection::Quit => Action::Quit,
+                },
+                _ => Action::Continue,
+            },
             _ => Action::Continue,
         }
     }

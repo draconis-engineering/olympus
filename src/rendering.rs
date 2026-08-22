@@ -1,8 +1,6 @@
 // src/rendering.rs
 
-use super::app::{
-    App, ControlSelection, DatabaseSelection, MainSelection, Screen, Selections, SettingsSelection,
-};
+use super::app::{App, MainSelection, Screen, SettingsSelection};
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
@@ -28,6 +26,7 @@ fn footer(current: Screen, app: &App) -> Paragraph<'_> {
     let setspan = Span::styled(" Settings", style);
     let userspan = Span::styled(app.user(), style);
     let connspan = Span::styled(app.connection(), style);
+    let statsspan = Span::styled(" Stats", style);
 
     let current_page: Span<'_>;
 
@@ -37,6 +36,7 @@ fn footer(current: Screen, app: &App) -> Paragraph<'_> {
         Screen::Control => current_page = conspan,
         Screen::Database => current_page = dbspan,
         Screen::Settings => current_page = setspan,
+        Screen::Stats => current_page = statsspan,
     }
 
     let footerspan = vec![current_page, sep.clone(), userspan, sep.clone(), connspan];
@@ -64,18 +64,18 @@ fn hr2color(hr: u16, maxhr: u16) -> (Color, u16, f32) {
 }
 
 // Convert power + lactate threshold power to color for rendering based on power zones and Dr Andrew Coggans Model
-fn pwr2color(pwr: u16, ltpwr: u16) -> (Color, u16) {
+fn pwr2color(pwr: u16, ltpwr: u16) -> (Color, u16, f32) {
     // Color, Zone, Zone description
     let ltpwr_percentage = (pwr as f32 / ltpwr as f32) * 100.0;
     match ltpwr_percentage.round() {
-        0.0..=54.0 => (Color::LightBlue, 1),
-        55.0..=75.0 => (Color::Blue, 2),
-        76.0..=90.0 => (Color::Green, 3),
-        91.0..=105.0 => (Color::Yellow, 4),
-        106.0..=120.0 => (Color::Rgb(255, 128, 0), 5), // Orange
-        121.0..=150.0 => (Color::Red, 6),
-        151.0..=1000.0 => (Color::Rgb(255, 192, 203), 7), // Pink
-        _ => (Color::White, 0),
+        0.0..=54.0 => (Color::LightBlue, 1, ltpwr_percentage),
+        55.0..=75.0 => (Color::Blue, 2, ltpwr_percentage),
+        76.0..=90.0 => (Color::Green, 3, ltpwr_percentage),
+        91.0..=105.0 => (Color::Yellow, 4, ltpwr_percentage),
+        106.0..=120.0 => (Color::Rgb(255, 128, 0), 5, ltpwr_percentage), // Orange
+        121.0..=150.0 => (Color::Red, 6, ltpwr_percentage),
+        151.0..=1000.0 => (Color::Rgb(255, 192, 203), 7, ltpwr_percentage), // Pink
+        _ => (Color::White, 0, ltpwr_percentage),
     }
 }
 
@@ -83,9 +83,11 @@ fn pwr2color(pwr: u16, ltpwr: u16) -> (Color, u16) {
 // --- Page-Specific Draw Functions ---
 // ====================================
 
-fn main_draw(frame: &mut Frame, area: Rect, selected: &MainSelection, app: &App) {
+fn main_draw(frame: &mut Frame, area: Rect, app: &App) {
     let _livedata = app.livedata();
     let _userdata = app.userdata();
+
+    let selected = app.selections().main();
 
     let gray = Style::default().fg(Color::Gray);
     let cyan = Style::default().fg(Color::Cyan);
@@ -163,10 +165,12 @@ fn main_draw(frame: &mut Frame, area: Rect, selected: &MainSelection, app: &App)
     );
 }
 
-fn control_draw(frame: &mut Frame, area: Rect, _selected: &ControlSelection, app: &App) {
+fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     // Data
     let livedata = app.livedata();
     let userdata = app.userdata();
+
+    let _selected = app.selections().control();
 
     // Colors
     let gray = Style::default().fg(Color::Gray);
@@ -191,7 +195,7 @@ fn control_draw(frame: &mut Frame, area: Rect, _selected: &ControlSelection, app
     ])
     .areas(hud_area);
 
-    let (pwrcolor, pwrzone) = pwr2color(livedata.pwr, userdata.ltpwr);
+    let (pwrcolor, pwrzone, ltpwrprcnt) = pwr2color(livedata.pwr, userdata.ltpwr);
 
     // Bigger, padded layout lines for easy reading while sweating
     frame.render_widget(
@@ -206,7 +210,7 @@ fn control_draw(frame: &mut Frame, area: Rect, _selected: &ControlSelection, app
             ])
             .alignment(Alignment::Center),
             Line::from(Span::styled(
-                format!("ZONE {}", pwrzone),
+                format!("ZONE {} | {}%", pwrzone, ltpwrprcnt.round()),
                 Style::default().fg(pwrcolor),
             ))
             .alignment(Alignment::Center),
@@ -447,7 +451,9 @@ fn control_draw(frame: &mut Frame, area: Rect, _selected: &ControlSelection, app
     );
 }
 
-fn database_draw(frame: &mut Frame, area: Rect, _selected: &DatabaseSelection, _app: &App) {
+fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
+    let _selected = app.selections().database();
+
     // Colors
     let gray = Style::default().fg(Color::Gray);
     let dark_gray = Style::default().fg(Color::DarkGray);
@@ -610,7 +616,9 @@ fn database_draw(frame: &mut Frame, area: Rect, _selected: &DatabaseSelection, _
     );
 }
 
-fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection, app: &App) {
+fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
+    let selected = app.selections().settings();
+
     // Divide screen into primary structural blocks
     let [sidebar_area, controls_area] =
         Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)]).areas(area);
@@ -744,11 +752,17 @@ fn settings_draw(frame: &mut Frame, area: Rect, selected: &SettingsSelection, ap
     frame.render_widget(content, inner_controls_area);
 }
 
+fn stats_draw(frame: &mut Frame, main_area: Rect, app: &App) {
+    let _selected = app.selections().stats();
+    let content = Paragraph::new(format!("Stats\n------\n"));
+    frame.render_widget(content, main_area);
+}
+
 // ====================================
 // --- Drawing Multiplexer Function ---
 // ====================================
 
-pub fn draw(frame: &mut Frame, app: &App, selections: &Selections) {
+pub fn draw(frame: &mut Frame, app: &App) {
     // Properly split the screen area into two horizontal sections
     let [main_area, footer_area] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(2)]).areas(frame.area());
@@ -759,9 +773,10 @@ pub fn draw(frame: &mut Frame, app: &App, selections: &Selections) {
 
     // Render content
     match app.screen() {
-        Screen::Main => main_draw(frame, main_area, selections.main(), app),
-        Screen::Control => control_draw(frame, main_area, selections.control(), app),
-        Screen::Database => database_draw(frame, main_area, selections.database(), app),
-        Screen::Settings => settings_draw(frame, main_area, selections.settings(), app),
+        Screen::Main => main_draw(frame, main_area, app),
+        Screen::Control => control_draw(frame, main_area, app),
+        Screen::Database => database_draw(frame, main_area, app),
+        Screen::Settings => settings_draw(frame, main_area, app),
+        Screen::Stats => stats_draw(frame, main_area, app),
     };
 }
