@@ -4,6 +4,7 @@ use super::app::{App, MainSelection, Screen, SettingsSelection};
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
+use ratatui::style::Color::Yellow;
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
@@ -169,20 +170,22 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     // Data
     let livedata = app.livedata();
     let userdata = app.userdata();
+    let workout_data = app.workout_data();
 
     let _selected = app.selections().control();
 
     // Colors
     let gray = Style::default().fg(Color::Gray);
-    let dark_gray = Style::default().fg(Color::DarkGray);
+    let darkgray = Style::default().fg(Color::DarkGray);
     let white = Style::default().fg(Color::White);
-    let bold_white = white.add_modifier(Modifier::BOLD);
+    let boldwhite = white.add_modifier(Modifier::BOLD);
+    let lightred = Style::default().fg(Color::LightRed);
+    let yellow = Style::default().fg(Color::Yellow);
 
     // Core Interface Layout Split
-    let [hud_area, main_area, footer_area] = Layout::vertical([
+    let [hud_area, main_area] = Layout::vertical([
         Constraint::Length(5), // Extended HUD (Allows larger stat fonts)
         Constraint::Min(10),   // Split Workout Tracking Panels
-        Constraint::Length(3), // In-ride Hotkey Actions
     ])
     .areas(area);
 
@@ -195,7 +198,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     ])
     .areas(hud_area);
 
-    let (pwrcolor, pwrzone, ltpwrprcnt) = pwr2color(livedata.pwr, userdata.ltpwr);
+    let (pwrcolor, pwrzone, ltpwrprcnt) = pwr2color(livedata.current_pwr, userdata.ltpwr);
 
     // Bigger, padded layout lines for easy reading while sweating
     frame.render_widget(
@@ -203,10 +206,10 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""), // Vertical pad
             Line::from(vec![
                 Span::styled(
-                    format!(" ⚡ {} ", livedata.pwr),
+                    format!(" {} ", livedata.current_pwr),
                     Style::default().fg(pwrcolor).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("W", dark_gray),
+                Span::styled("Watts", darkgray),
             ])
             .alignment(Alignment::Center),
             Line::from(Span::styled(
@@ -224,7 +227,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         pwr_rect,
     );
 
-    let (hrcolor, hrzone, hrmaxprcnt) = hr2color(livedata.hr, userdata.maxhr);
+    let (hrcolor, hrzone, hrmaxprcnt) = hr2color(livedata.current_hr, userdata.maxhr);
     let hrclrstyle = Style::default().fg(hrcolor);
     let hrblock = Block::new()
         .borders(Borders::ALL)
@@ -236,10 +239,10 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(vec![
                 Span::styled(
-                    format!(" ❤️ {} ", livedata.hr),
+                    format!(" {} ", livedata.current_hr),
                     hrclrstyle.add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("BPM", dark_gray),
+                Span::styled("BPM", darkgray),
             ])
             .alignment(Alignment::Center),
             Line::from(Span::styled(
@@ -256,8 +259,8 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         Paragraph::new(vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled(format!(" 🔄 {} ", livedata.rpm), bold_white),
-                Span::styled("RPM", dark_gray),
+                Span::styled(format!(" {} ", livedata.current_rpm), boldwhite),
+                Span::styled("RPM", darkgray),
             ])
             .alignment(Alignment::Center),
         ])
@@ -270,12 +273,12 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(vec![
                 Span::styled(
-                    format!(" 💨 {:.1} ", livedata.vel),
+                    format!(" {:.1} ", livedata.current_velo),
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("KM/H", dark_gray),
+                Span::styled("KM/H", darkgray),
             ])
             .alignment(Alignment::Center),
         ])
@@ -288,7 +291,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         kmh_rect,
     );
 
-    // 3. Main Workspace Split (Left: Session Metrics, Right: Visual Simulation Road)
+    // Main Split (Left: Session Metrics, Right: Visual Simulation Road)
     let [left_panel, right_panel] =
         Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
             .areas(main_area);
@@ -297,35 +300,53 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let workout_metrics = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  ⏱  ELAPSED TIME:   ", dark_gray),
-            Span::styled("00:42:18", bold_white),
+            Span::styled("  ELAPSED TIME:   ", darkgray),
+            Span::styled(
+                format!(
+                    "{}m {}s",
+                    workout_data.elapsed_time / 60,
+                    workout_data.elapsed_time % 60
+                ),
+                boldwhite,
+            ),
+            Span::styled(" | ", boldwhite),
+            Span::styled(
+                format!(
+                    "{}m {}s",
+                    workout_data.duration / 60,
+                    workout_data.duration % 60
+                ),
+                boldwhite,
+            ),
         ]),
         Line::from(vec![
-            Span::styled("  🏁 DISTANCE:       ", dark_gray),
-            Span::styled("21.4 km", bold_white),
+            Span::styled("  DISTANCE:       ", darkgray),
+            Span::styled(format!("{} km", workout_data.elapsed_distance), boldwhite),
+            Span::styled(" | ", boldwhite),
+            Span::styled(format!("{} km", workout_data.total_distance), boldwhite),
         ]),
         Line::from(vec![
-            Span::styled("  ⛰  ELEVATION GAIN: ", dark_gray),
-            Span::styled("+312 m", Style::default().fg(Color::LightGreen)),
+            Span::styled("  ELEVATION GAIN: ", darkgray),
+            Span::styled(
+                format!("+{} m", livedata.elev_gain),
+                Style::default().fg(Color::LightGreen),
+            ),
+            Span::styled("  |  ", boldwhite),
+            Span::styled(format!("+{} m", livedata.elev_loss), lightred),
         ]),
         Line::from(vec![
-            Span::styled("  🔥 CALORIES:       ", dark_gray),
-            Span::styled("542 kcal", Style::default().fg(Color::LightRed)),
+            Span::styled("  CALORIES:       ", darkgray),
+            Span::styled("542 kcal", lightred),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  --- TARGET INTERVAL ---", dark_gray)),
+        Line::from(Span::styled("  --- TARGET INTERVAL ---", darkgray)),
         Line::from(vec![
-            Span::styled("  🎯 CURRENT GOAL:   ", dark_gray),
-            Span::styled("240W for 5 mins", Style::default().fg(Color::Yellow)),
+            Span::styled("  CURRENT GOAL:   ", darkgray),
+            Span::styled("240W for 5 mins", yellow),
         ]),
         Line::from(vec![
-            Span::styled("  ⏳ REMAINING:      ", dark_gray),
-            Span::styled(
-                "02:15",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("  REMAINING:      ", darkgray),
+            Span::styled("02:15", yellow.add_modifier(Modifier::BOLD)),
         ]),
     ];
 
@@ -343,50 +364,45 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "                     /  *  \\                     ",
-            dark_gray,
+            darkgray,
         )),
         Line::from(Span::styled(
             "                    /   *   \\                    ",
-            dark_gray,
+            darkgray,
         )),
         Line::from(Span::styled(
             "                   /    *    \\                   ",
-            dark_gray,
+            darkgray,
         )),
         Line::from(vec![
             Span::styled("  [Rider A (+0:04)] ", gray),
-            Span::styled("/     *     \\", dark_gray),
+            Span::styled("/     *     \\", darkgray),
         ]),
         Line::from(Span::styled(
             "                 /      *      \\                 ",
-            dark_gray,
+            darkgray,
         )),
         Line::from(vec![
-            Span::styled("                /       ", dark_gray),
-            Span::styled(
-                "▲ YOU",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("       \\                ", dark_gray),
+            Span::styled("                /       ", darkgray),
+            Span::styled("▲ YOU", yellow.add_modifier(Modifier::BOLD)),
+            Span::styled("       \\                ", darkgray),
         ]),
         Line::from(Span::styled(
             "              /         *         \\              ",
-            dark_gray,
+            darkgray,
         )),
         Line::from(vec![
-            Span::styled("             /          *          \\   ", dark_gray),
-            Span::styled("[Gradient: 6.5%]", Style::default().fg(Color::LightRed)),
+            Span::styled("             /          *          \\   ", darkgray),
+            Span::styled("[Gradient: 6.5%]", lightred),
         ]),
         Line::from(Span::styled(
             "___________/____________*____________\\___________",
-            dark_gray,
+            darkgray,
         )),
         Line::from(""),
         Line::from(Span::styled(
             "  📍 Location: Watopia Epic KOM Pass (Sector 3)",
-            dark_gray,
+            darkgray,
         )),
     ];
 
@@ -397,57 +413,6 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 .title(" Live Route Simulator (3D Text View) "),
         ),
         right_panel,
-    );
-
-    // 4. Ride Action Hotkeys Footer
-    let [key1, key2, key3] = Layout::horizontal([
-        Constraint::Percentage(33),
-        Constraint::Percentage(34),
-        Constraint::Percentage(33),
-    ])
-    .areas(footer_area);
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                " [Space] ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("Pause Ride", gray),
-        ]))
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
-        key1,
-    );
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                " [M] ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("Toggle Map Mode", gray),
-        ]))
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
-        key2,
-    );
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                " [Esc] ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("End & Save Workout", gray),
-        ]))
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::TOP).fg(Color::DarkGray)),
-        key3,
     );
 }
 

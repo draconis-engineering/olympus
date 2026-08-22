@@ -10,10 +10,83 @@ use std::u16;
 
 // Live data from device
 pub struct LiveData {
-    pub pwr: u16,
-    pub rpm: u16,
-    pub hr: u16,
-    pub vel: f32,
+    pub current_pwr: u16,
+    pub avg_20min_pwr: u16,
+    pub avg_10min_pwr: u16,
+    pub avg_5min_pwr: u16,
+    pub avg_pwr: u16,
+    pub top_pwr: u16,
+
+    pub current_rpm: u16,
+    pub avg_rpm: u16,
+
+    pub current_hr: u16,
+    pub avg_hr: u16,
+    pub top_hr: u16,
+
+    pub current_velo: f32,
+    pub top_velo: f32,
+    pub avg_velo: f32,
+
+    pub gradient: f32,
+    pub altitude: f32,
+    pub elev_gain: f32,
+    pub elev_loss: f32,
+}
+
+impl LiveData {
+    pub fn new() -> Self {
+        Self {
+            current_pwr: 0,
+            avg_20min_pwr: 0,
+            avg_10min_pwr: 0,
+            avg_5min_pwr: 0,
+            avg_pwr: 0,
+            top_pwr: 0,
+            current_rpm: 0,
+            avg_rpm: 0,
+            current_hr: 0,
+            avg_hr: 0,
+            top_hr: 0,
+            current_velo: 0.0,
+            top_velo: 0.0,
+            avg_velo: 0.0,
+            gradient: 0.0,
+            altitude: 0.0,
+            elev_gain: 0.0,
+            elev_loss: 0.0,
+        }
+    }
+
+    pub fn update(
+        &mut self,
+        pwr: u16,
+        rpm: u16,
+        hr: u16,
+        velo: f32,
+        gradient: f32,
+        altitude: f32,
+        elev_gain: f32,
+        elev_loss: f32,
+    ) {
+        self.current_pwr = pwr;
+        self.current_rpm = rpm;
+        self.current_hr = hr;
+        self.current_velo = velo;
+        self.gradient = gradient;
+        self.altitude = altitude;
+        self.elev_gain = elev_gain;
+        self.elev_loss = elev_loss;
+
+        // Update averages and top values here
+    }
+}
+
+pub struct WorkoutData {
+    pub duration: u16,
+    pub elapsed_time: u16,
+    pub total_distance: f32,
+    pub elapsed_distance: f32,
 }
 
 // Data for calculating things like power/hr zones, etc
@@ -238,13 +311,15 @@ pub struct App {
     screen: Screen,
     livedata: LiveData,
     userdata: UserData,
+    workout_data: WorkoutData,
     selections: Selections,
 }
 impl App {
-    pub fn new(livedata: LiveData, userdata: UserData) -> Self {
+    pub fn new(livedata: LiveData, userdata: UserData, workout_data: WorkoutData) -> Self {
         Self {
             livedata,
             userdata,
+            workout_data,
             screen: Screen::default(),
             selections: Selections::new(),
         }
@@ -257,6 +332,9 @@ impl App {
     }
     pub fn userdata(&self) -> &UserData {
         &self.userdata
+    }
+    pub fn workout_data(&self) -> &WorkoutData {
+        &self.workout_data
     }
     pub fn selections(&self) -> &Selections {
         &self.selections
