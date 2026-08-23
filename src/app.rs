@@ -10,51 +10,65 @@ use std::u16;
 
 // Live data from device
 pub struct LiveData {
-    pub current_pwr: u16,
+    // Power
+    pub crnt_pwr: u16,
     pub avg_20min_pwr: u16,
     pub avg_10min_pwr: u16,
     pub avg_5min_pwr: u16,
     pub avg_pwr: u16,
     pub top_pwr: u16,
-
-    pub current_rpm: u16,
+    pub target_pwr: u16,
+    // Cadence
+    pub crnt_rpm: u16,
     pub avg_rpm: u16,
-
-    pub current_hr: u16,
+    pub top_rpm: u16,
+    // Heart rate
+    pub crnt_hr: u16,
     pub avg_hr: u16,
     pub top_hr: u16,
-
-    pub current_velo: f32,
-    pub top_velo: f32,
-    pub avg_velo: f32,
-
+    // Velocity
+    pub crnt_vel: f32,
+    pub top_vel: f32,
+    pub avg_vel: f32,
+    // Gradient/Elevation
     pub gradient: f32,
     pub altitude: f32,
     pub elev_gain: f32,
     pub elev_loss: f32,
+    // Calories
+    pub calories: f32,
 }
 
 impl LiveData {
     pub fn new() -> Self {
         Self {
-            current_pwr: 0,
+            // Power
+            crnt_pwr: 0,
             avg_20min_pwr: 0,
             avg_10min_pwr: 0,
             avg_5min_pwr: 0,
             avg_pwr: 0,
             top_pwr: 0,
-            current_rpm: 0,
+            target_pwr: 0,
+            // Cadence
+            crnt_rpm: 0,
             avg_rpm: 0,
-            current_hr: 0,
+            top_rpm: 0,
+            // Heart rate
+            crnt_hr: 0,
             avg_hr: 0,
             top_hr: 0,
-            current_velo: 0.0,
-            top_velo: 0.0,
-            avg_velo: 0.0,
+            // Velocity
+            crnt_vel: 0.0,
+            avg_vel: 0.0,
+            top_vel: 0.0,
+            // Gradient/Elevation
             gradient: 0.0,
             altitude: 0.0,
             elev_gain: 0.0,
             elev_loss: 0.0,
+            // Calories
+            calories: 0.0,
         }
     }
 
@@ -69,10 +83,10 @@ impl LiveData {
         elev_gain: f32,
         elev_loss: f32,
     ) {
-        self.current_pwr = pwr;
-        self.current_rpm = rpm;
-        self.current_hr = hr;
-        self.current_velo = velo;
+        self.crnt_pwr = pwr;
+        self.crnt_rpm = rpm;
+        self.crnt_hr = hr;
+        self.crnt_vel = velo;
         self.gradient = gradient;
         self.altitude = altitude;
         self.elev_gain = elev_gain;
@@ -94,6 +108,7 @@ pub struct UserData {
     pub user: String,
     pub ltpwr: u16,
     pub maxhr: u16,
+    // Preferences under here
 }
 
 pub struct TUIGuard {
@@ -309,7 +324,7 @@ pub enum Action {
 
 pub struct App {
     screen: Screen,
-    livedata: LiveData,
+    pub livedata: LiveData,
     userdata: UserData,
     workout_data: WorkoutData,
     selections: Selections,

@@ -4,7 +4,6 @@ use super::app::{App, MainSelection, Screen, SettingsSelection};
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
-use ratatui::style::Color::Yellow;
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
@@ -175,21 +174,26 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let _selected = app.selections().control();
 
     // Colors
-    let gray = Style::default().fg(Color::Gray);
-    let darkgray = Style::default().fg(Color::DarkGray);
-    let white = Style::default().fg(Color::White);
+    let dstl = Style::default();
+    let gray = dstl.fg(Color::Gray);
+    let darkgray = dstl.fg(Color::DarkGray);
+    let white = dstl.fg(Color::White);
     let boldwhite = white.add_modifier(Modifier::BOLD);
-    let lightred = Style::default().fg(Color::LightRed);
-    let yellow = Style::default().fg(Color::Yellow);
+    let lightred = dstl.fg(Color::LightRed);
+    let yellow = dstl.fg(Color::Yellow);
+    let boldyellow = yellow.add_modifier(Modifier::BOLD);
+    let lightblue = dstl.fg(Color::LightBlue);
+    let boldlightblue = lightblue.add_modifier(Modifier::BOLD);
+    let lightgreen = dstl.fg(Color::LightGreen);
 
     // Core Interface Layout Split
     let [hud_area, main_area] = Layout::vertical([
-        Constraint::Length(5), // Extended HUD (Allows larger stat fonts)
+        Constraint::Length(6), // Extended HUD (Allows larger stat fonts)
         Constraint::Min(10),   // Split Workout Tracking Panels
     ])
     .areas(area);
 
-    // High-Visibility HUD Layout
+    // Hi-Vis HUD Layout
     let [pwr_rect, hr_rect, rpm_rect, kmh_rect] = Layout::horizontal([
         Constraint::Percentage(25),
         Constraint::Percentage(25),
@@ -198,24 +202,54 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     ])
     .areas(hud_area);
 
-    let (pwrcolor, pwrzone, ltpwrprcnt) = pwr2color(livedata.current_pwr, userdata.ltpwr);
+    // Power Helpers
+    let (pwrcolor, pwrzone, ltpwrprcnt) = pwr2color(livedata.crnt_pwr, userdata.ltpwr);
+    let ltpwr = userdata.ltpwr;
 
-    // Bigger, padded layout lines for easy reading while sweating
+    // Power HUD
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(""), // Vertical pad
             Line::from(vec![
+                Span::styled("Z", boldwhite),
+                Span::styled(format!("{}", pwrzone), pwrcolor),
+                Span::styled(" | ", boldwhite),
                 Span::styled(
-                    format!(" {} ", livedata.current_pwr),
-                    Style::default().fg(pwrcolor).add_modifier(Modifier::BOLD),
+                    format!("{} ", livedata.crnt_pwr),
+                    dstl.fg(pwrcolor).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("Watts", darkgray),
+                Span::styled("W", boldwhite),
+                Span::styled(" | ", boldwhite),
+                Span::styled(format!("{}", ltpwrprcnt), pwrcolor),
+                Span::styled("% FTP", boldwhite),
             ])
             .alignment(Alignment::Center),
-            Line::from(Span::styled(
-                format!("ZONE {} | {}%", pwrzone, ltpwrprcnt.round()),
-                Style::default().fg(pwrcolor),
-            ))
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("20m: ", darkgray),
+                Span::styled(
+                    format!("{}  ", livedata.avg_20min_pwr),
+                    pwr2color(livedata.avg_20min_pwr, ltpwr).0,
+                ),
+                Span::styled("10m: ", darkgray),
+                Span::styled(
+                    format!("{}  ", livedata.avg_10min_pwr),
+                    pwr2color(livedata.avg_10min_pwr, ltpwr).0,
+                ),
+                Span::styled("5m: ", darkgray),
+                Span::styled(
+                    format!("{}  ", livedata.avg_5min_pwr),
+                    pwr2color(livedata.avg_5min_pwr, ltpwr).0,
+                ),
+            ])
+            .alignment(Alignment::Center),
+            Line::from(vec![
+                Span::styled("TRGT: ", boldwhite),
+                Span::styled(format!("{} ", livedata.target_pwr), boldwhite),
+                Span::styled("TOP: ", boldwhite),
+                Span::styled(format!("{} ", livedata.top_pwr), boldwhite),
+                Span::styled("AVG: ", boldwhite),
+                Span::styled(format!("{}", livedata.avg_pwr), boldwhite),
+            ])
             .alignment(Alignment::Center),
         ])
         .block(
@@ -227,40 +261,69 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         pwr_rect,
     );
 
-    let (hrcolor, hrzone, hrmaxprcnt) = hr2color(livedata.current_hr, userdata.maxhr);
-    let hrclrstyle = Style::default().fg(hrcolor);
+    // HR Helpers
+    let maxhr = userdata.maxhr;
+    let (hrcolor, hrzone, hrmaxprcnt) = hr2color(livedata.crnt_hr, maxhr);
+    let hrclrstyle = dstl.fg(hrcolor);
     let hrblock = Block::new()
         .borders(Borders::ALL)
         .title(" Heart Rate ")
         .fg(hrcolor);
 
+    // Heart Rate HUD
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(""),
             Line::from(vec![
                 Span::styled(
-                    format!(" {} ", livedata.current_hr),
+                    format!(" {} ", livedata.crnt_hr),
                     hrclrstyle.add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("BPM", darkgray),
+                Span::styled("BPM", boldwhite),
             ])
             .alignment(Alignment::Center),
-            Line::from(Span::styled(
-                format!("ZONE {} - {:.0}%", hrzone, hrmaxprcnt),
-                hrclrstyle,
-            ))
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  ZONE ", boldwhite),
+                Span::styled(format!("{}", hrzone), hrclrstyle),
+                Span::styled(" | ", boldwhite),
+                Span::styled(format!("{:.0}", hrmaxprcnt), hrclrstyle),
+                Span::styled("% MAX", boldwhite),
+            ])
+            .alignment(Alignment::Center),
+            Line::from(vec![
+                Span::styled("AVG: ", boldwhite),
+                Span::styled(
+                    format!("{}", livedata.avg_hr),
+                    hr2color(livedata.avg_hr, maxhr).0,
+                ),
+                Span::styled(" | ", boldwhite),
+                Span::styled("TOP: ", boldwhite),
+                Span::styled(
+                    format!("{}", livedata.top_hr),
+                    hr2color(livedata.top_hr, maxhr).0,
+                ),
+            ])
             .alignment(Alignment::Center),
         ])
         .block(hrblock),
         hr_rect,
     );
 
+    // Cadence HUD
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled(format!(" {} ", livedata.current_rpm), boldwhite),
+                Span::styled(format!(" {} ", livedata.crnt_rpm), boldwhite),
                 Span::styled("RPM", darkgray),
+                // Target rpm span here
+            ])
+            .alignment(Alignment::Center),
+            Line::from(vec![
+                Span::styled("AVG: ", darkgray),
+                Span::styled(format!("{}  ", livedata.avg_rpm), boldlightblue),
+                Span::styled("TOP: ", darkgray),
+                Span::styled(format!("{}  ", livedata.top_rpm), boldlightblue),
             ])
             .alignment(Alignment::Center),
         ])
@@ -268,17 +331,23 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         rpm_rect,
     );
 
+    // Speed HUD
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(""),
             Line::from(vec![
                 Span::styled(
-                    format!(" {:.1} ", livedata.current_velo),
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
+                    format!(" {:.1} ", livedata.crnt_vel),
+                    dstl.fg(Color::Cyan).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled("KM/H", darkgray),
+            ])
+            .alignment(Alignment::Center),
+            Line::from(vec![
+                Span::styled("AVG: ", darkgray),
+                Span::styled(format!("{}  ", livedata.avg_vel), boldlightblue),
+                Span::styled("TOP: ", darkgray),
+                Span::styled(format!("{}  ", livedata.top_vel), boldlightblue),
             ])
             .alignment(Alignment::Center),
         ])
@@ -300,7 +369,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let workout_metrics = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  ELAPSED TIME:   ", darkgray),
+            Span::styled("  TIME:      ", darkgray),
             Span::styled(
                 format!(
                     "{}m {}s",
@@ -309,7 +378,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 ),
                 boldwhite,
             ),
-            Span::styled(" | ", boldwhite),
+            Span::styled(" / ", boldwhite),
             Span::styled(
                 format!(
                     "{}m {}s",
@@ -320,36 +389,35 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             ),
         ]),
         Line::from(vec![
-            Span::styled("  DISTANCE:       ", darkgray),
+            Span::styled("  DISTANCE:  ", darkgray),
             Span::styled(format!("{} km", workout_data.elapsed_distance), boldwhite),
-            Span::styled(" | ", boldwhite),
+            Span::styled(" / ", boldwhite),
             Span::styled(format!("{} km", workout_data.total_distance), boldwhite),
         ]),
+        Line::from(""),
         Line::from(vec![
-            Span::styled("  ELEVATION GAIN: ", darkgray),
-            Span::styled(
-                format!("+{} m", livedata.elev_gain),
-                Style::default().fg(Color::LightGreen),
-            ),
-            Span::styled("  |  ", boldwhite),
-            Span::styled(format!("+{} m", livedata.elev_loss), lightred),
+            Span::styled("  ELEVATION:  ", darkgray),
+            Span::styled(format!("+{} m", livedata.elev_gain), lightgreen),
+            Span::styled("  /  ", boldwhite),
+            Span::styled(format!("-{} m", livedata.elev_loss), lightred),
         ]),
         Line::from(vec![
-            Span::styled("  CALORIES:       ", darkgray),
-            Span::styled("542 kcal", lightred),
+            Span::styled("  GRADIENT:  ", darkgray),
+            Span::styled(format!("{}%", livedata.gradient), boldwhite),
+        ]),
+        Line::from(vec![
+            Span::styled("  ALTITUDE:  ", darkgray),
+            Span::styled(format!("{} m", livedata.altitude), boldwhite),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  --- TARGET INTERVAL ---", darkgray)),
         Line::from(vec![
-            Span::styled("  CURRENT GOAL:   ", darkgray),
-            Span::styled("240W for 5 mins", yellow),
-        ]),
-        Line::from(vec![
-            Span::styled("  REMAINING:      ", darkgray),
-            Span::styled("02:15", yellow.add_modifier(Modifier::BOLD)),
+            Span::styled("  CALORIES:  ", darkgray),
+            Span::styled(format!("{} ", livedata.calories), lightred),
+            Span::styled("kcal", boldwhite),
         ]),
     ];
 
+    // Side Panel
     frame.render_widget(
         Paragraph::new(workout_metrics).block(
             Block::new()
@@ -359,42 +427,38 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         left_panel,
     );
 
-    // Right Panel: Text-based "Virtual Virtual World" Ride Simulator View
+    // Virtual road
     let perspective_road = vec![
         Line::from(""),
-        Line::from(Span::styled(
-            "                     /  *  \\                     ",
-            darkgray,
-        )),
-        Line::from(Span::styled(
-            "                    /   *   \\                    ",
-            darkgray,
-        )),
-        Line::from(Span::styled(
-            "                   /    *    \\                   ",
-            darkgray,
-        )),
+        Line::from(Span::styled("                     /  *  \\", darkgray)),
+        Line::from(Span::styled("                    /   *   \\", darkgray)),
+        Line::from(Span::styled("                   /    *    \\", darkgray)),
         Line::from(vec![
-            Span::styled("  [Rider A (+0:04)] ", gray),
+            Span::styled("[Rider A (+0:04)] ", gray),
             Span::styled("/     *     \\", darkgray),
         ]),
-        Line::from(Span::styled(
-            "                 /      *      \\                 ",
-            darkgray,
-        )),
+        Line::from(Span::styled("                 /      *      \\", darkgray)),
         Line::from(vec![
             Span::styled("                /       ", darkgray),
-            Span::styled("▲ YOU", yellow.add_modifier(Modifier::BOLD)),
-            Span::styled("       \\                ", darkgray),
+            Span::styled("▲ YOU", boldyellow),
+            Span::styled("   \\", darkgray),
         ]),
         Line::from(Span::styled(
-            "              /         *         \\              ",
+            "               /        *        \\",
             darkgray,
         )),
-        Line::from(vec![
-            Span::styled("             /          *          \\   ", darkgray),
-            Span::styled("[Gradient: 6.5%]", lightred),
-        ]),
+        Line::from(Span::styled(
+            "              /         *         \\",
+            darkgray,
+        )),
+        Line::from(vec![Span::styled(
+            "             /          *          \\",
+            darkgray,
+        )]),
+        Line::from(Span::styled(
+            "            /           *           \\",
+            darkgray,
+        )),
         Line::from(Span::styled(
             "___________/____________*____________\\___________",
             darkgray,
@@ -410,11 +474,13 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         Paragraph::new(perspective_road).block(
             Block::new()
                 .borders(Borders::ALL)
-                .title(" Live Route Simulator (3D Text View) "),
+                .title(" Live Route Simulator "),
         ),
         right_panel,
     );
 }
+
+// -------------------------------------------------------
 
 fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
     let _selected = app.selections().database();
@@ -581,6 +647,8 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
     );
 }
 
+// -------------------------------------------------------
+
 fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     let selected = app.selections().settings();
 
@@ -716,6 +784,8 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(content, inner_controls_area);
 }
+
+// -------------------------------------------------------
 
 fn stats_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     let _selected = app.selections().stats();

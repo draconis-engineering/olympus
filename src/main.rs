@@ -16,30 +16,7 @@ fn main() -> io::Result<()> {
     let mut terminal = init()?;
 
     // Load fake data - Make a function of this and update inside the loop? async
-    let livedata = LiveData {
-        current_pwr: 1000,
-        avg_20min_pwr: 0,
-        avg_10min_pwr: 0,
-        avg_5min_pwr: 0,
-        avg_pwr: 0,
-        top_pwr: 0,
-
-        current_rpm: 95,
-        avg_rpm: 0,
-
-        current_hr: 208,
-        avg_hr: 0,
-        top_hr: 0,
-
-        current_velo: 50.5,
-        top_velo: 0.0,
-        avg_velo: 0.0,
-
-        gradient: 0.0,
-        altitude: 0.0,
-        elev_gain: 0.0,
-        elev_loss: 0.0,
-    };
+    let livedata = LiveData::new();
 
     let userdata = UserData {
         user: "Simon Stordal Amundgård".to_string(),
@@ -81,6 +58,8 @@ fn main() -> io::Result<()> {
                 }
             }
         }
+        app.livedata
+            .update(1000, 95, 100, 50.0, 9.5, 1400.0, 100.0, 50.0);
     }
 
     Ok(())
