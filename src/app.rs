@@ -4,9 +4,11 @@ use super::boot::restore;
 
 use crossterm::event::KeyCode;
 use ratatui::{Terminal, backend::CrosstermBackend};
-use std::io::Stdout;
-use std::ops::{Deref, DerefMut};
-use std::u16;
+use std::{
+    io::Stdout,
+    ops::{Deref, DerefMut},
+    u16,
+};
 
 // Live data from device
 pub struct LiveData {
@@ -16,27 +18,38 @@ pub struct LiveData {
     pub avg_10min_pwr: u16,
     pub avg_5min_pwr: u16,
     pub avg_pwr: u16,
-    pub top_pwr: u16,
+    pub max_pwr: u16,
     pub target_pwr: u16,
+    pub normalized_pwr: f32,
     // Cadence
     pub crnt_rpm: u16,
     pub avg_rpm: u16,
-    pub top_rpm: u16,
+    pub max_rpm: u16,
+    pub target_rpm: u16,
     // Heart rate
     pub crnt_hr: u16,
     pub avg_hr: u16,
-    pub top_hr: u16,
+    pub max_hr: u16,
+    pub target_hrz: u16,
     // Velocity
     pub crnt_vel: f32,
-    pub top_vel: f32,
+    pub max_vel: f32,
     pub avg_vel: f32,
+    pub target_vel: f32,
     // Gradient/Elevation
-    pub gradient: f32,
-    pub altitude: f32,
-    pub elev_gain: f32,
-    pub elev_loss: f32,
-    // Calories
+    pub grad: f32,
+    pub alti: f32,
+    pub egain: f32,
+    pub eloss: f32,
+    // Energy
     pub calories: f32,
+    pub kj: f32,
+    // TSS / IF
+    pub tss: f32,
+    pub ifac: f32,
+    // Elapsed
+    pub elapsed_secs: u32,
+    pub elapsed_distance: f32,
 }
 
 impl LiveData {
@@ -48,27 +61,38 @@ impl LiveData {
             avg_10min_pwr: 0,
             avg_5min_pwr: 0,
             avg_pwr: 0,
-            top_pwr: 0,
+            max_pwr: 0,
             target_pwr: 0,
+            normalized_pwr: 0.0,
             // Cadence
             crnt_rpm: 0,
             avg_rpm: 0,
-            top_rpm: 0,
+            max_rpm: 0,
+            target_rpm: 0,
             // Heart rate
             crnt_hr: 0,
             avg_hr: 0,
-            top_hr: 0,
+            max_hr: 0,
+            target_hrz: 0,
             // Velocity
             crnt_vel: 0.0,
             avg_vel: 0.0,
-            top_vel: 0.0,
+            max_vel: 0.0,
+            target_vel: 0.0,
             // Gradient/Elevation
-            gradient: 0.0,
-            altitude: 0.0,
-            elev_gain: 0.0,
-            elev_loss: 0.0,
+            grad: 0.0,
+            alti: 0.0,
+            egain: 0.0,
+            eloss: 0.0,
             // Calories
+            kj: 0.0,
             calories: 0.0,
+            // TSS / IF
+            tss: 0.0,
+            ifac: 0.0,
+            // Elapsed
+            elapsed_secs: 0,
+            elapsed_distance: 0.0,
         }
     }
 
@@ -77,37 +101,50 @@ impl LiveData {
         pwr: u16,
         rpm: u16,
         hr: u16,
-        velo: f32,
-        gradient: f32,
-        altitude: f32,
-        elev_gain: f32,
-        elev_loss: f32,
+        vel: f32,
+        grad: f32,
+        alti: f32,
+        egain: f32,
+        eloss: f32,
     ) {
         self.crnt_pwr = pwr;
         self.crnt_rpm = rpm;
         self.crnt_hr = hr;
-        self.crnt_vel = velo;
-        self.gradient = gradient;
-        self.altitude = altitude;
-        self.elev_gain = elev_gain;
-        self.elev_loss = elev_loss;
+        self.crnt_vel = vel;
+        self.grad = grad;
+        self.alti = alti;
+        self.egain = egain;
+        self.eloss = eloss;
 
-        // Update averages and top values here
+        if pwr > self.max_pwr {
+            self.max_pwr = pwr;
+        }
+        if hr > self.max_hr {
+            self.max_hr = hr;
+        }
+        if vel > self.max_vel {
+            self.max_vel = vel;
+        }
     }
 }
 
 pub struct WorkoutData {
     pub duration: u16,
-    pub elapsed_time: u16,
     pub total_distance: f32,
-    pub elapsed_distance: f32,
+}
+
+pub struct UserStats {
+    pub maxhr: u16,
+
+    pub ftp: u16,
+    pub _maxpwr: u16,
 }
 
 // Data for calculating things like power/hr zones, etc
 pub struct UserData {
-    pub user: String,
-    pub ltpwr: u16,
-    pub maxhr: u16,
+    pub username: String,
+
+    pub stats: UserStats,
     // Preferences under here
 }
 
@@ -356,13 +393,13 @@ impl App {
     }
 
     pub fn version(&self) -> &str {
-        "0.1.0"
+        "0.1.5"
     }
     pub fn devices(&self) -> &str {
         "Wahoo Kickr Core 2 - CONNECTED"
     }
     pub fn user(&self) -> &str {
-        &self.userdata.user
+        &self.userdata.username
     }
     pub fn connection(&self) -> &str {
         "CONNECTED - Wahoo Kickr Core 2"
