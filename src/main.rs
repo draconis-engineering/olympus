@@ -1,4 +1,6 @@
 // src/main.rs
+//
+// Main entry point for the Olympus application.
 
 mod app;
 mod boot;

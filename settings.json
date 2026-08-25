@@ -3,5 +3,8 @@
     "useMetric": true,
     "voiceNotifications": false,
     "darkMode": true
+  },
+  "settings": {
+    "checkUpdates": true
   }
 }

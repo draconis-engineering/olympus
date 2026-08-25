@@ -1,4 +1,6 @@
 // src/app.rs
+//
+// App.rs is the main application struct and entry point for the TUI.
 
 use super::boot::restore;
 use super::nav::{MainSelection, Selections};

@@ -1,4 +1,6 @@
 // src/boot.rs
+//
+// Boot.rs is responsible for initializing the terminal and TUI state.
 
 use super::app::TUIGuard;
 use crossterm::{

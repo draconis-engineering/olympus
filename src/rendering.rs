@@ -1,4 +1,6 @@
 // src/rendering.rs
+//
+// Rendering.rs is responsible for rendering the Olympus interface and its pages.
 
 use super::app::{App, Screen};
 use super::math::{coggan_pwr_model, olt_hr_model, zone2color};

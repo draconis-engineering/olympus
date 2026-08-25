@@ -1,6 +1,6 @@
 // src/nav.rs
 
-// Navigation System for Olympus TUI
+// Nav.rs implements the navigation system for the Olympus TUI.
 
 use super::app::Screen;
 

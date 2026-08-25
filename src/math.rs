@@ -1,3 +1,7 @@
+// src/math.rs
+//
+// Math.rs is responsible for mathematical operations used in Olympus.
+
 use ratatui::prelude::Color;
 
 // == == = = == == //
