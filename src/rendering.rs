@@ -1,7 +1,8 @@
 // src/rendering.rs
 
-use super::app::{App, MainSelection, Screen, SettingsSelection};
-use super::math::{coggan_pwr_model, olt_hr_model};
+use super::app::{App, Screen};
+use super::math::{coggan_pwr_model, olt_hr_model, zone2color};
+use super::nav::{MainSelection, SettingsSelection};
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
@@ -15,19 +16,19 @@ use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 // Footer rendering function
 fn footer(current: Screen, app: &App) -> Paragraph<'_> {
-    let style = Style::default()
-        .add_modifier(Modifier::BOLD)
-        .fg(Color::Green);
-    let sep = Span::styled(" | ", style.fg(Color::Gray));
+    let hlgt_stl = Style::default().fg(Color::Green); // Highlighted style
+    let bhlgt_stl = Style::default().add_modifier(Modifier::BOLD); // Bold highlighted style
+    let sep = Span::styled(" | ", hlgt_stl.fg(Color::Gray));
 
     // Initialize un-highlighted
-    let mainspan = Span::styled(" Main page", style);
-    let conspan = Span::styled(" Control panel", style);
-    let dbspan = Span::styled(" Database", style);
-    let setspan = Span::styled(" Settings", style);
-    let userspan = Span::styled(app.user(), style);
-    let connspan = Span::styled(app.connection(), style);
-    let statsspan = Span::styled(" Stats", style);
+    let mainspan = Span::styled(" Main page", bhlgt_stl);
+    let conspan = Span::styled(" Control panel", bhlgt_stl);
+    let dbspan = Span::styled(" Database", bhlgt_stl);
+    let setspan = Span::styled(" Settings", bhlgt_stl);
+    let statsspan = Span::styled(" Stats", bhlgt_stl);
+
+    let userspan = Span::styled(app.user(), hlgt_stl);
+    //let connspan = Span::styled(app.connection(), hlgt_stl);
 
     let current_page: Span<'_>;
 
@@ -40,12 +41,12 @@ fn footer(current: Screen, app: &App) -> Paragraph<'_> {
         Screen::Stats => current_page = statsspan,
     }
 
-    let footerspan = vec![current_page, sep.clone(), userspan, sep.clone(), connspan];
+    let footerspan = vec![current_page, sep.clone(), userspan, sep.clone()];
+    let footerline = Line::from(footerspan);
     let footerblock = Block::default()
         .borders(Borders::LEFT | Borders::RIGHT | Borders::TOP)
         .fg(Color::DarkGray)
         .border_type(BorderType::Rounded);
-    let footerline = Line::from(footerspan);
 
     Paragraph::new(footerline).block(footerblock)
 }
@@ -146,15 +147,16 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     // Colors
     let dstl = Style::default();
-    let darkgray = dstl.fg(Color::DarkGray);
     let white = dstl.fg(Color::White);
-    let boldwhite = white.add_modifier(Modifier::BOLD);
-    let lightred = dstl.fg(Color::LightRed);
     let yellow = dstl.fg(Color::Yellow);
-    let boldyellow = yellow.add_modifier(Modifier::BOLD);
+    let lightred = dstl.fg(Color::LightRed);
+    let darkgray = dstl.fg(Color::DarkGray);
     let lightblue = dstl.fg(Color::LightBlue);
-    let boldlightblue = lightblue.add_modifier(Modifier::BOLD);
     let lightgreen = dstl.fg(Color::LightGreen);
+
+    let boldwhite = white.add_modifier(Modifier::BOLD);
+    let boldyellow = yellow.add_modifier(Modifier::BOLD);
+    let boldlightblue = lightblue.add_modifier(Modifier::BOLD);
 
     // Core Interface Layout Split
     let [hud_area, main_area] = Layout::vertical([
@@ -174,7 +176,9 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     // Power Helpers
     let ftp = userdata.stats.ftp;
-    let (pwrcolor, pwrzone, ltpwrprcnt) = coggan_pwr_model(livedata.crnt_pwr, ftp);
+    let pwrzone = coggan_pwr_model(livedata.crnt_pwr, ftp);
+    let pwrcolor = zone2color(pwrzone);
+    let ltpwrprcnt = (livedata.crnt_pwr as f32 / ftp as f32) * 100.0;
 
     // Power HUD
     frame.render_widget(
@@ -189,7 +193,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 ),
                 Span::styled("W", boldwhite),
                 Span::styled(" | ", boldwhite),
-                Span::styled(format!("{:>5.1} ", ltpwrprcnt), pwrcolor),
+                Span::styled(format!("{:.1} ", ltpwrprcnt), pwrcolor),
                 Span::styled("% FTP", boldwhite),
             ])
             .alignment(Alignment::Center),
@@ -198,17 +202,17 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Span::styled("20m: ", darkgray),
                 Span::styled(
                     format!("{}  ", livedata.avg_20min_pwr),
-                    coggan_pwr_model(livedata.avg_20min_pwr, ftp).0,
+                    zone2color(coggan_pwr_model(livedata.avg_20min_pwr, ftp)),
                 ),
                 Span::styled("10m: ", darkgray),
                 Span::styled(
                     format!("{}  ", livedata.avg_10min_pwr),
-                    coggan_pwr_model(livedata.avg_10min_pwr, ftp).0,
+                    zone2color(coggan_pwr_model(livedata.avg_10min_pwr, ftp)),
                 ),
                 Span::styled("5m: ", darkgray),
                 Span::styled(
                     format!("{}  ", livedata.avg_5min_pwr),
-                    coggan_pwr_model(livedata.avg_5min_pwr, ftp).0,
+                    zone2color(coggan_pwr_model(livedata.avg_5min_pwr, ftp)),
                 ),
             ])
             .alignment(Alignment::Center),
@@ -233,7 +237,9 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     // HR Helpers
     let maxhr = userdata.stats.maxhr;
-    let (hrcolor, hrzone, hrmaxprcnt) = olt_hr_model(livedata.crnt_hr, maxhr);
+    let hrz = olt_hr_model(livedata.crnt_hr, maxhr);
+    let hrcolor = zone2color(hrz);
+    let hrmaxprcnt = (livedata.crnt_hr as f32 / maxhr as f32) * 100.0;
     let hrclrstyle = dstl.fg(hrcolor);
     let hrblock = Block::new()
         .borders(Borders::ALL)
@@ -254,7 +260,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(vec![
                 Span::styled("  ZONE ", boldwhite),
-                Span::styled(format!("{}", hrzone), hrclrstyle),
+                Span::styled(format!("{}", hrz), hrclrstyle),
                 Span::styled(" | ", boldwhite),
                 Span::styled(format!("{:.0}", hrmaxprcnt), hrclrstyle),
                 Span::styled("% MAX", boldwhite),
@@ -266,12 +272,12 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Span::styled("AVG: ", boldwhite),
                 Span::styled(
                     format!("{}  ", livedata.avg_hr),
-                    olt_hr_model(livedata.avg_hr, maxhr).0,
+                    zone2color(olt_hr_model(livedata.avg_hr, maxhr)),
                 ),
                 Span::styled("MAX: ", boldwhite),
                 Span::styled(
                     format!("{}  ", livedata.max_hr),
-                    olt_hr_model(livedata.max_hr, maxhr).0,
+                    zone2color(olt_hr_model(livedata.max_hr, maxhr)),
                 ),
             ])
             .alignment(Alignment::Center),
@@ -336,14 +342,14 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     // Main Split
     let [left_panel, right_panel] =
-        Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
+        Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
             .areas(main_area);
 
     // Left Panel: Real-time Ride Progress Metrics
     let workout_metrics = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  ELAPSED:      ", darkgray),
+            Span::styled("  TIME:        ", darkgray),
             Span::styled(
                 format!(
                     "{}m {}s",
@@ -354,7 +360,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             ),
         ]),
         Line::from(vec![
-            Span::styled("  REMAINING:  ", darkgray),
+            Span::styled("  REMAINING:   ", darkgray),
             Span::styled(
                 format!(
                     "{}m {}s",
@@ -364,11 +370,20 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 boldwhite,
             ),
         ]),
+        Line::from(""),
         Line::from(vec![
-            Span::styled("  DISTANCE:  ", darkgray),
+            Span::styled("  DISTANCE:    ", darkgray),
             Span::styled(format!("{} km", livedata.elapsed_distance), boldwhite),
-            Span::styled(" / ", boldwhite),
-            Span::styled(format!("{} km", workout_data.total_distance), boldwhite),
+        ]),
+        Line::from(vec![
+            Span::styled("  REMAINING:   ", darkgray),
+            Span::styled(
+                format!(
+                    "{} km",
+                    workout_data.total_distance - livedata.elapsed_distance
+                ),
+                boldwhite,
+            ),
         ]),
         Line::from(""),
         Line::from(vec![
@@ -389,25 +404,25 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  NP:        ", darkgray),
+            Span::styled("  NP:          ", darkgray),
             Span::styled(format!("{} W", livedata.normalized_pwr), boldyellow),
         ]),
         Line::from(vec![
-            Span::styled("  IF:        ", darkgray),
+            Span::styled("  IF:          ", darkgray),
             Span::styled(format!("{:.2}", livedata.ifac), boldyellow),
         ]),
         Line::from(vec![
-            Span::styled("  TSS:       ", darkgray),
+            Span::styled("  TSS:         ", darkgray),
             Span::styled(format!("{:.2}", livedata.tss), boldyellow),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  ENERGY:    ", darkgray),
+            Span::styled("  ENERGY:      ", darkgray),
             Span::styled(format!("{}", livedata.kj), boldyellow),
             Span::styled(" kJ", boldwhite),
         ]),
         Line::from(vec![
-            Span::styled("  CALORIES:  ", darkgray),
+            Span::styled("  CALORIES:    ", darkgray),
             Span::styled(format!("{} ", livedata.calories), lightred),
             Span::styled("kcal", boldwhite),
         ]),
@@ -433,7 +448,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(Span::styled("                 /      *      \\", darkgray)),
         Line::from(vec![
             Span::styled("                /       ", darkgray),
-            Span::styled("▲ YOU", boldyellow),
+            Span::styled("▲ YOU", boldlightblue),
             Span::styled("   \\", darkgray),
         ]),
         Line::from(Span::styled(
@@ -459,7 +474,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "  📍 Location: Watopia Epic KOM Pass (Sector 3)",
-            darkgray,
+            lightgreen,
         )),
     ];
 
@@ -762,17 +777,24 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
         SettingsSelection::Appearance => Paragraph::new(format!(
             "Appearance Settings\n-------------------\nTheme: Dark Mode\nFont Size: 12"
         )),
-        SettingsSelection::Bluetooth => Paragraph::new(format!(
-            "Bluetooth Devices\n-----------------\n[*] {}",
-            app.devices()
-        )),
+        SettingsSelection::Bluetooth => Paragraph::new(vec![
+            Line::from("Bluetooth Devices"),
+            Line::from("-----------------"),
+            Line::from(app.connection()),
+        ]),
         SettingsSelection::System => Paragraph::new(format!(
             "System Information\n------------------\nVersion: {}",
             app.version()
         )),
-        SettingsSelection::User => Paragraph::new(format!(
-            "User Settings\n--------------\n[ ] Dark Mode\n[ ] High Contrast"
-        )),
+        SettingsSelection::User => Paragraph::new(vec![
+            Line::from("User Settings"),
+            Line::from("--------------"),
+            Line::from(format!("[{}] Dark Mode", app.preferences().dark_mode)),
+            Line::from(format!(
+                "[{}] High Contrast",
+                app.preferences().high_contrast
+            )),
+        ]),
     };
 
     frame.render_widget(content, inner_controls_area);

@@ -1,33 +1,58 @@
 use ratatui::prelude::Color;
 
+// == == = = == == //
+// -- HR MODELS -- //
+// == == = = == == //
+
 // Olympiatoppen's Model | Get color from HR zone
-pub fn olt_hr_model(hr: u16, maxhr: u16) -> (Color, u16, f32) {
+pub fn olt_hr_model(hr: u16, maxhr: u16) -> u16 {
     let percent = (hr as f32 / maxhr as f32) * 100.0;
     let rounded_percent = percent.round() as u16;
 
     match rounded_percent {
-        0..=54 => (Color::White, 0, percent.round()),
-        55..=72 => (Color::Gray, 1, percent.round()),
-        73..=82 => (Color::LightBlue, 2, percent.round()),
-        83..=87 => (Color::Green, 3, percent.round()),
-        88..=93 => (Color::Yellow, 4, percent.round()),
-        94..=100 => (Color::Red, 5, percent.round()),
-        _ => (Color::LightRed, 6, percent.round()),
+        0..=54 => 0,
+        55..=72 => 1,
+        73..=82 => 2,
+        83..=87 => 3,
+        88..=93 => 4,
+        94..=100 => 5,
+        _ => 6,
     }
 }
 
-// Coggans Model | Convert power + lactate threshold power to color for rendering based on power zones
-pub fn coggan_pwr_model(pwr: u16, ltpwr: u16) -> (Color, u16, f32) {
+// == == = == = == == //
+// -- POWER MODELS -- //
+// == == = == = == == //
+
+// Coggans Model | Convert power + lactate threshold power to zone
+pub fn coggan_pwr_model(pwr: u16, ltpwr: u16) -> u16 {
     // Color, Zone, Zone description
     let ltpwr_percentage = (pwr as f32 / ltpwr as f32) * 100.0;
     match ltpwr_percentage.round() {
-        0.0..=54.0 => (Color::LightBlue, 1, ltpwr_percentage),
-        55.0..=75.0 => (Color::Blue, 2, ltpwr_percentage),
-        76.0..=90.0 => (Color::Green, 3, ltpwr_percentage),
-        91.0..=105.0 => (Color::Yellow, 4, ltpwr_percentage),
-        106.0..=120.0 => (Color::Rgb(255, 128, 0), 5, ltpwr_percentage), // Orange
-        121.0..=150.0 => (Color::Red, 6, ltpwr_percentage),
-        151.0..=1000.0 => (Color::Rgb(255, 192, 203), 7, ltpwr_percentage), // Pink
-        _ => (Color::White, 0, ltpwr_percentage),
+        0.0..=54.0 => 1,
+        55.0..=75.0 => 2,
+        76.0..=90.0 => 3,
+        91.0..=105.0 => 4,
+        106.0..=120.0 => 5,
+        121.0..=150.0 => 6,
+        151.0..=1000.0 => 7,
+        _ => 0,
+    }
+}
+
+// == == == = = == == == //
+// -- RENDERING UTILS -- //
+// == == == = = == == == //
+
+pub fn zone2color(zone: u16) -> Color {
+    match zone {
+        1 => Color::LightBlue,
+        2 => Color::Blue,
+        3 => Color::Green,
+        4 => Color::Yellow,
+        5 => Color::Rgb(255, 128, 0),
+        6 => Color::Red,
+        7 => Color::Rgb(255, 192, 203),
+        _ => Color::White,
     }
 }

@@ -76,7 +76,7 @@ fn main() -> io::Result<()> {
         terminal.draw(|frame| draw(frame, &app))?;
         if let Event::Key(key) = read()? {
             if key.kind == KeyEventKind::Press {
-                let action = app.handle_key_press(key.code, app.screen());
+                let action = app.handle_key_press(key.code);
                 if action == Action::Quit {
                     break;
                 }
