@@ -16,7 +16,6 @@ use rendering::draw;
 use std::io;
 use std::thread;
 use std::time::{Duration, Instant};
-use tui_big_text::{BigText, PixelSize};
 
 fn main() -> io::Result<()> {
     // == == == == == == //
@@ -61,8 +60,7 @@ fn main() -> io::Result<()> {
     // 1. Async/threaded data fetching from bluetooth client
     // 2. Bulletproof navigation between screens
     // 3. Resistance on roller
-    // 4. Update livedata
-    // 5. Rolling calculations
+    // 5. Rolling calculations of averages
     // 6. FPS Counter
     // 7. Threaded data writing/reading
     // 8. Post-exercise data processing and analysis

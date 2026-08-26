@@ -243,6 +243,39 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         .fg(Color::DarkGray)
         .border_type(BorderType::Rounded);
 
+    let pwrztextrect = pwrzblock.inner(pwrzrect);
+
+    let pwrztext = Paragraph::new(vec![
+        Line::from(vec![
+            Span::from("  Z1").fg(Color::DarkGray),
+            Span::from(format!("{}", 0)),
+        ]),
+        Line::from(vec![
+            Span::from("  Z2").fg(Color::DarkGray),
+            Span::from(format!("{}", 0)),
+        ]),
+        Line::from(vec![
+            Span::from("  Z3").fg(Color::DarkGray),
+            Span::from(format!("{}", 0)),
+        ]),
+        Line::from(vec![
+            Span::from("  Z4").fg(Color::DarkGray),
+            Span::from(format!("{}", 0)),
+        ]),
+        Line::from(vec![
+            Span::from("  Z5").fg(Color::DarkGray),
+            Span::from(format!("{}", 0)),
+        ]),
+        Line::from(vec![
+            Span::from("  Z6").fg(Color::DarkGray),
+            Span::from(format!("{}", 0)),
+        ]),
+        Line::from(vec![
+            Span::from("  Z7").fg(Color::DarkGray),
+            Span::from(format!("{}", 0)),
+        ]),
+    ]);
+
     let statblock = Block::default()
         .title(" RIDE STATS ")
         .borders(Borders::ALL)
@@ -253,7 +286,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let statstext = Paragraph::new(vec![
         Line::from(vec![
-            Span::from("DURATION"),
+            Span::from("  DURATION:   "),
             Span::from(format!(
                 "{}:{}:{}",
                 livedata.elapsed_secs / 3600,
@@ -262,27 +295,27 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             )),
         ]),
         Line::from(vec![
-            Span::from("DISTANCE"),
+            Span::from("  DISTANCE:   "),
             Span::from(format!("{} km", livedata.elapsed_distance)),
         ]),
         Line::from(vec![
-            Span::from("ELEVATION"),
+            Span::from("  ELEVATION:  "),
             Span::from(format!("{} m", livedata.alti)),
         ]),
         Line::from(vec![
-            Span::from("GRADIENT"),
+            Span::from("  GRADIENT:   "),
             Span::from(format!("{}%", livedata.grad)),
         ]),
         Line::from(vec![
-            Span::from("CALORIES"),
+            Span::from("  CALORIES:   "),
             Span::from(format!("{} kcal", livedata.calories)),
         ]),
         Line::from(vec![
-            Span::from("TSS"),
+            Span::from("  TSS:        "),
             Span::from(format!("{}", livedata.tss)),
         ]),
         Line::from(vec![
-            Span::from("IF"),
+            Span::from("  IF:         "),
             Span::from(format!("{}", livedata.ifac)),
         ]),
     ]);
@@ -302,13 +335,21 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(pwrblock, pwrrect);
     frame.render_widget(pwrzline, zone);
     frame.render_widget(pwrtrgtline, pwrtarget);
+
     frame.render_widget(hrblock, hrrect);
+
     frame.render_widget(rpmblock, rpmrect);
+
     frame.render_widget(velblock, velrect);
+
     frame.render_widget(pwrzblock, pwrzrect);
+    frame.render_widget(pwrztext, pwrztextrect);
+
     frame.render_widget(statblock, statrect);
     frame.render_widget(statstext, statstextrect);
+
     frame.render_widget(intvlblock, intvlrect);
+
     frame.render_widget(sysblock, sysrect);
 }
 
