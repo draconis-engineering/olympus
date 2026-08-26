@@ -16,6 +16,7 @@ use rendering::draw;
 use std::io;
 use std::thread;
 use std::time::{Duration, Instant};
+use tui_big_text::{BigText, PixelSize};
 
 fn main() -> io::Result<()> {
     // == == == == == == //
