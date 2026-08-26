@@ -246,34 +246,14 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let pwrztextrect = pwrzblock.inner(pwrzrect);
 
     let pwrztext = Paragraph::new(vec![
-        Line::from(vec![
-            Span::from("  Z1").fg(Color::DarkGray),
-            Span::from(format!("{}", 0)),
-        ]),
-        Line::from(vec![
-            Span::from("  Z2").fg(Color::DarkGray),
-            Span::from(format!("{}", 0)),
-        ]),
-        Line::from(vec![
-            Span::from("  Z3").fg(Color::DarkGray),
-            Span::from(format!("{}", 0)),
-        ]),
-        Line::from(vec![
-            Span::from("  Z4").fg(Color::DarkGray),
-            Span::from(format!("{}", 0)),
-        ]),
-        Line::from(vec![
-            Span::from("  Z5").fg(Color::DarkGray),
-            Span::from(format!("{}", 0)),
-        ]),
-        Line::from(vec![
-            Span::from("  Z6").fg(Color::DarkGray),
-            Span::from(format!("{}", 0)),
-        ]),
-        Line::from(vec![
-            Span::from("  Z7").fg(Color::DarkGray),
-            Span::from(format!("{}", 0)),
-        ]),
+        Line::from(""),
+        Line::from(vec![Span::from("  Z1  ").fg(Color::DarkGray)]),
+        Line::from(vec![Span::from("  Z2  ").fg(Color::DarkGray)]),
+        Line::from(vec![Span::from("  Z3  ").fg(Color::DarkGray)]),
+        Line::from(vec![Span::from("  Z4  ").fg(Color::DarkGray)]),
+        Line::from(vec![Span::from("  Z5  ").fg(Color::DarkGray)]),
+        Line::from(vec![Span::from("  Z6  ").fg(Color::DarkGray)]),
+        Line::from(vec![Span::from("  Z7  ").fg(Color::DarkGray)]),
     ]);
 
     let statblock = Block::default()
@@ -285,6 +265,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let statstextrect = statblock.inner(statrect);
 
     let statstext = Paragraph::new(vec![
+        Line::from(""),
         Line::from(vec![
             Span::from("  DURATION:   "),
             Span::from(format!(
