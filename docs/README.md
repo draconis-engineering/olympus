@@ -39,8 +39,7 @@ The application utilizes a decoupled, multi-threaded design powered by an asynch
   - Fitness Machine Control Point (0x2AD) for ERG resistance adjustments.
 
 ### File Processing & Local Storage
-- **Fitparser**: Converts/validates session telemetry; Olympus ships its own
-  minimal FIT **writer** for Garmin-compatible `.fit` output.
+- **Fitparser**: Converts/validates session telemetry; Olympus ships its own minimal FIT **writer** for Garmin-compatible `.fit` output.
 - **Nom** / **Serde-XML**: Parsers designed to load text/XML-based .zwo (Zwift workouts) and .mrc/.erg target files.
 - **Rusqlite**: An embedded SQLite database engine for local storage of profile weight, current FTP values, and local historical training logs.
 
@@ -117,4 +116,3 @@ cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
 - [x] SQLite session persistence
 - [ ] Database browsing / workout history UI (v0.2)
 - [ ] Profile settings screen edits (v0.2)
-
