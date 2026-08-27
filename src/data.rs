@@ -2,17 +2,17 @@
 //
 // Data.rs handles FIT file parsing, SQLite storage, and user profile management.
 
-use fitparser::FitFile;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::path::Path;
 
 /// FIT file session data parsed from .fit files
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FitSession {
     pub total_distance: f32,
     pub total_calories: f32,
-    pub total_power: f32,
+    pub total_power: f32, // Note: Not in your original SQLite schema, but kept in struct
     pub avg_speed: f32,
     pub max_speed: f32,
     pub max_heart_rate: u16,
@@ -29,6 +29,73 @@ pub struct UserProfile {
     pub height: f32,
     pub ftp: u16,
     pub max_hr: u16,
+}
+
+/// Parses a .fit file and extracts the session summary data
+pub fn parse_fit_file(path: &Path) -> Result<FitSession, Box<dyn std::error::Error>> {
+    let mut file = File::open(path)?;
+    let records = fitparser::from_reader(&mut file)?;
+    let mut session_data = FitSession::default();
+
+    // Look for the single summary "session" message in the FIT file
+    if let Some(session_record) = records
+        .iter()
+        .find(|r| r.kind() == fitparser::profile::MesgNum::Session)
+    {
+        for field in session_record.fields() {
+            match field.name() {
+                "total_distance" => {
+                    if let fitparser::Value::Float32(v) = field.value() {
+                        session_data.total_distance = *v;
+                    }
+                }
+                "total_calories" => {
+                    if let fitparser::Value::UInt16(v) = field.value() {
+                        session_data.total_calories = *v as f32;
+                    }
+                }
+                "avg_speed" => {
+                    if let fitparser::Value::UInt16(v) = field.value() {
+                        session_data.avg_speed = *v as f32 / 1000.0;
+                    }
+                } // FIT scales speed
+                "max_speed" => {
+                    if let fitparser::Value::UInt16(v) = field.value() {
+                        session_data.max_speed = *v as f32 / 1000.0;
+                    }
+                }
+                "max_heart_rate" => {
+                    if let fitparser::Value::UInt8(v) = field.value() {
+                        session_data.max_heart_rate = *v as u16;
+                    }
+                }
+                "avg_heart_rate" => {
+                    if let fitparser::Value::UInt8(v) = field.value() {
+                        session_data.avg_heart_rate = *v as u16;
+                    }
+                }
+                "max_power" => {
+                    if let fitparser::Value::UInt16(v) = field.value() {
+                        session_data.max_power = *v;
+                    }
+                }
+                "avg_power" => {
+                    if let fitparser::Value::UInt16(v) = field.value() {
+                        session_data.avg_power = *v;
+                    }
+                }
+                "timestamp" => {
+                    if let fitparser::Value::Timestamp(v) = field.value() {
+                        session_data.timestamp = v.timestamp();
+                    }
+                }
+                _ => {}
+            }
+        }
+        return Ok(session_data);
+    }
+
+    Err("No session summary record found in FIT file".into())
 }
 
 /// Initialize SQLite database and create tables
@@ -95,8 +162,11 @@ pub fn load_user_profile(conn: &Connection) -> rusqlite::Result<Option<UserProfi
         })
     })?;
 
-    let profile = rows.next().map(|r| r.unwrap());
-    Ok(profile)
+    if let Some(result) = rows.next() {
+        Ok(Some(result?))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Save a FIT session to SQLite

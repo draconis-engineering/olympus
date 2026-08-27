@@ -1,1 +1,6 @@
 /target
+/data/.fit/*.fit
+/data/olympus.db
+/data/olympus.db-journal
+/data/olympus.db-wal
+/data/olympus.db-shm
