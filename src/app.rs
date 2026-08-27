@@ -2,7 +2,9 @@
 //
 // App.rs is the main application struct and entry point for the TUI.
 
-use super::boot::{init, restore};
+use super::boot::restore;
+use super::erg::Workout;
+use super::math;
 use super::nav::{MainSelection, Selections};
 
 use crossterm::event::KeyCode;
@@ -13,8 +15,6 @@ use ratatui::{
     text::Span,
 };
 use std::{
-    io::{self, Stdout},
-    sync::mpsc,
     ops::{Deref, DerefMut},
     u16,
 };
@@ -153,7 +153,7 @@ pub struct UserData {
 }
 
 pub struct TUIGuard {
-    pub tui: Terminal<CrosstermBackend<Stdout>>,
+    pub tui: Terminal<CrosstermBackend<std::io::Stdout>>,
 }
 impl Drop for TUIGuard {
     fn drop(&mut self) {
@@ -161,13 +161,13 @@ impl Drop for TUIGuard {
     }
 }
 impl Deref for TUIGuard {
-    type Target = Terminal<CrosstermBackend<Stdout>>;
-    fn deref(&self) -> &Terminal<CrosstermBackend<Stdout>> {
+    type Target = Terminal<CrosstermBackend<std::io::Stdout>>;
+    fn deref(&self) -> &Terminal<CrosstermBackend<std::io::Stdout>> {
         &self.tui
     }
 }
 impl DerefMut for TUIGuard {
-    fn deref_mut(&mut self) -> &mut Terminal<CrosstermBackend<Stdout>> {
+    fn deref_mut(&mut self) -> &mut Terminal<CrosstermBackend<std::io::Stdout>> {
         &mut self.tui
     }
 }
@@ -220,6 +220,9 @@ pub struct App {
     pub power_history: Vec<u64>,
     pub hr_history: Vec<u16>,
     pub rpm_history: Vec<u16>,
+
+    /// The currently loaded workout schedule (ERG/ZWO), if any.
+    pub workout: Option<Workout>,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData, workout_data: WorkoutData) -> Self {
@@ -233,6 +236,7 @@ impl App {
             power_history: Vec::with_capacity(POWER_HISTORY_CAPACITY),
             hr_history: Vec::with_capacity(HR_HISTORY_CAPACITY),
             rpm_history: Vec::with_capacity(RPM_HISTORY_CAPACITY),
+            workout: None,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -246,6 +250,15 @@ impl App {
     }
     pub fn workout_data(&self) -> &WorkoutData {
         &self.workout_data
+    }
+
+    /// Loads a workout schedule into the app. `None` clears it (free ride).
+    pub fn set_workout(&mut self, workout: Option<Workout>) {
+        self.workout = workout;
+    }
+
+    pub fn workout(&self) -> Option<&Workout> {
+        self.workout.as_ref()
     }
     pub fn selections(&self) -> &Selections {
         &self.selections
@@ -297,8 +310,103 @@ impl App {
         self.hr_history.iter().map(|&x| u64::from(x))
     }
 
+    /// Pushes the current cadence onto the rolling history buffer.
+    pub fn push_rpm_history(&mut self) {
+        if self.rpm_history.len() >= RPM_HISTORY_CAPACITY {
+            self.rpm_history.remove(0);
+        }
+        self.rpm_history.push(self.livedata.crnt_rpm);
+    }
+
     pub fn rpm_history(&self) -> impl Iterator<Item = u64> + '_ {
         self.rpm_history.iter().map(|&x| u64::from(x))
+    }
+
+    // Rolling window sizes (seconds) for the power averages shown on screen.
+    const PWR_20MIN_S: usize = 1200;
+    const PWR_10MIN_S: usize = 600;
+    const PWR_5MIN_S: usize = 300;
+
+    /// Recomputes the derived ride metrics (power/cadence/HR averages, rolling
+    /// windows, NP, IF, TSS, kJ, calories) from the recorded history buffers.
+    /// `sample_rate_hz` is how often history is pushed (usually ~1/s).
+    pub fn recompute_metrics(&mut self, ftp: f32, sample_rate_hz: f64) {
+        let sample_len = std::cmp::max(1, sample_rate_hz.round() as usize);
+
+        let pwr_20_bins = Self::PWR_20MIN_S / sample_len;
+        let pwr_10_bins = Self::PWR_10MIN_S / sample_len;
+        let pwr_5_bins = Self::PWR_5MIN_S / sample_len;
+
+        // Whole-ride averages.
+        self.livedata.avg_pwr = math::rolling_mean(&self.power_history, self.power_history.len())
+            .round() as u16;
+        self.livedata.avg_rpm = math::rolling_mean(
+            &self.rpm_history.iter().map(|&x| u64::from(x)).collect::<Vec<_>>(),
+            usize::MAX,
+        )
+        .round() as u16;
+        self.livedata.avg_hr = math::rolling_mean(
+            &self.hr_history.iter().map(|&x| u64::from(x)).collect::<Vec<_>>(),
+            usize::MAX,
+        )
+        .round() as u16;
+
+        // Rolling power windows (best effort — uses whatever has accumulated).
+        self.livedata.avg_20min_pwr =
+            math::rolling_mean(&self.power_history, pwr_20_bins).round() as u16;
+        self.livedata.avg_10min_pwr =
+            math::rolling_mean(&self.power_history, pwr_10_bins).round() as u16;
+        self.livedata.avg_5min_pwr =
+            math::rolling_mean(&self.power_history, pwr_5_bins).round() as u16;
+
+        // Maxes from history.
+        self.livedata.max_pwr = self
+            .power_history
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .min(u16::MAX as u64) as u16;
+        self.livedata.max_rpm = self
+            .rpm_history
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0);
+        self.livedata.max_hr = self.hr_history.iter().copied().max().unwrap_or(0);
+
+        // Performance metrics.
+        let np = math::normalized_power(&self.power_history, sample_rate_hz);
+        self.livedata.normalized_pwr = np as f32;
+        let ifac = math::intensity_factor(np, ftp as f64);
+        self.livedata.ifac = ifac as f32;
+        self.livedata.tss =
+            math::tss(np, ifac, ftp as f64, self.livedata.elapsed_secs as f64) as f32;
+
+        let kj = math::energy_kj(self.livedata.avg_pwr as f64, self.livedata.elapsed_secs as f64);
+        self.livedata.kj = kj as f32;
+        self.livedata.calories = math::calories_kcal(kj) as f32;
+    }
+
+    /// Advances the elapsed ride clock by one second and, if a workout is
+    /// active, resolves the new target power for the current interval.
+    pub fn tick_second(&mut self) -> u16 {
+        self.livedata.elapsed_secs += 1;
+        let target = match &self.workout {
+            Some(w) => w
+                .step_at(self.livedata.elapsed_secs)
+                .map(|s| s.target_power)
+                .unwrap_or(0),
+            None => self.livedata.target_pwr,
+        };
+        self.livedata.target_pwr = target;
+        target
+    }
+
+    /// Integrates current speed into the accumulated distance (km).
+    pub fn accumulate_distance(&mut self, dt_s: f64) {
+        self.livedata.elapsed_distance +=
+            math::distance_km(self.livedata.crnt_vel as f64, dt_s) as f32;
     }
 
     pub fn handle_key_press(&mut self, key_code: KeyCode) -> Action {

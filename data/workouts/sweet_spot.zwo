@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<workout_file>
+  <name><en_US>Sweet Spot 5x5</en_US></name>
+  <description><en_US>Five 5-minute sweet-spot efforts at 88-94% FTP</en_US></description>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.40" PowerHigh="0.55"/>
+    <IntervalsT Repeat="5" OnDuration="300" OffDuration="180" OnPower="0.90" OffPower="0.50"/>
+    <Cooldown Duration="300" PowerLow="0.35" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

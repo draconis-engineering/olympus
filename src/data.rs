@@ -22,13 +22,26 @@ pub struct FitSession {
     pub timestamp: i64,
 }
 
-/// User profile stored in SQLite
+/// User profile, persisted to JSON in `data/user/profile.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserProfile {
+    pub username: String,
     pub weight: f32,
     pub height: f32,
     pub ftp: u16,
     pub max_hr: u16,
+}
+
+impl Default for UserProfile {
+    fn default() -> Self {
+        Self {
+            username: "Rider".to_string(),
+            weight: 75.0,
+            height: 180.0,
+            ftp: 200,
+            max_hr: 180,
+        }
+    }
 }
 
 /// Parses a .fit file and extracts the session summary data
@@ -98,21 +111,30 @@ pub fn parse_fit_file(path: &Path) -> Result<FitSession, Box<dyn std::error::Err
     Err("No session summary record found in FIT file".into())
 }
 
+/// Path to the rider profile JSON file, relative to the project data dir.
+pub const PROFILE_PATH: &str = "data/user/profile.json";
+
+/// Load the rider profile from JSON, falling back to defaults when the file
+/// doesn't exist yet (first run).
+pub fn load_profile() -> UserProfile {
+    let Ok(text) = std::fs::read_to_string(PROFILE_PATH) else {
+        return UserProfile::default();
+    };
+    serde_json::from_str(&text).unwrap_or_default()
+}
+
+/// Persist the rider profile to JSON.
+pub fn save_profile(profile: &UserProfile) -> Result<(), String> {
+    if let Some(parent) = Path::new(PROFILE_PATH).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = serde_json::to_string_pretty(profile).map_err(|e| e.to_string())?;
+    std::fs::write(PROFILE_PATH, json).map_err(|e| e.to_string())
+}
+
 /// Initialize SQLite database and create tables
 pub fn init_db(path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS user_profiles (
-            id INTEGER PRIMARY KEY,
-            weight REAL NOT NULL,
-            height REAL NOT NULL,
-            ftp INTEGER NOT NULL,
-            max_hr INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-        [],
-    )?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS fit_sessions (
@@ -132,41 +154,6 @@ pub fn init_db(path: &Path) -> rusqlite::Result<Connection> {
     )?;
 
     Ok(conn)
-}
-
-/// Save user profile to SQLite
-pub fn save_user_profile(conn: &Connection, profile: &UserProfile) -> rusqlite::Result<()> {
-    conn.execute(
-        "INSERT INTO user_profiles (weight, height, ftp, max_hr) VALUES (?1, ?2, ?3, ?4)",
-        (
-            profile.weight as f64,
-            profile.height as f64,
-            profile.ftp as i32,
-            profile.max_hr as i32,
-        ),
-    )?;
-    Ok(())
-}
-
-/// Load user profile from SQLite (most recent)
-pub fn load_user_profile(conn: &Connection) -> rusqlite::Result<Option<UserProfile>> {
-    let mut stmt = conn.prepare(
-        "SELECT weight, height, ftp, max_hr FROM user_profiles ORDER BY created_at DESC LIMIT 1",
-    )?;
-    let mut rows = stmt.query_map([], |row| {
-        Ok(UserProfile {
-            weight: row.get::<_, f64>(0)? as f32,
-            height: row.get::<_, f64>(1)? as f32,
-            ftp: row.get::<_, i32>(2)? as u16,
-            max_hr: row.get::<_, i32>(3)? as u16,
-        })
-    })?;
-
-    if let Some(result) = rows.next() {
-        Ok(Some(result?))
-    } else {
-        Ok(None)
-    }
 }
 
 /// Save a FIT session to SQLite

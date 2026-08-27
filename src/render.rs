@@ -201,12 +201,6 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let pwr_zone = coggan_pwr_model(livedata.crnt_pwr, userstats.ftp);
     let pwr_color = zone2color(pwr_zone);
 
-    let pwr_percent = if userstats.ftp > 0 {
-        (livedata.crnt_pwr as f32 / userstats.ftp as f32 * 100.0) as u16
-    } else {
-        0
-    };
-
     let pwrblock = Block::default()
         .title(" POWER ")
         .borders(Borders::ALL)
