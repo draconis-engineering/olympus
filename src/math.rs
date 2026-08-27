@@ -60,3 +60,27 @@ pub fn zone2color(zone: u16) -> Color {
         _ => Color::White,
     }
 }
+
+// == == == == == == == == //
+// -- HISTORY HELPERS  --- //
+// == == == == == == == == //
+
+/// Pushes `pwr` onto a rolling history buffer of fixed capacity.
+/// Oldest entry is dropped when the buffer is full.
+pub fn push_history(buf: &mut Vec<u64>, pwr: u64, cap: usize) {
+    if buf.len() >= cap {
+        buf.remove(0);
+    }
+    buf.push(pwr);
+}
+
+/// Computes the rolling arithmetic mean over the last `window` samples.
+pub fn rolling_mean(buf: &[u64], window: usize) -> f64 {
+    let n = buf.len();
+    if n == 0 {
+        return 0.0;
+    }
+    let start = n.saturating_sub(window);
+    let slice = &buf[start..];
+    slice.iter().map(|&v| v as f64).sum::<f64>() / slice.len() as f64
+}

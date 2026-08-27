@@ -2,7 +2,7 @@
 //
 // App.rs is the main application struct and entry point for the TUI.
 
-use super::boot::restore;
+use super::boot::{init, restore};
 use super::nav::{MainSelection, Selections};
 
 use crossterm::event::KeyCode;
@@ -13,7 +13,8 @@ use ratatui::{
     text::Span,
 };
 use std::{
-    io::Stdout,
+    io::{self, Stdout},
+    sync::mpsc,
     ops::{Deref, DerefMut},
     u16,
 };
@@ -200,6 +201,11 @@ impl Preferences {
     }
 }
 
+/// Capacity (in samples) of the rolling power, heart rate, and cadence history buffers.
+pub const POWER_HISTORY_CAPACITY: usize = 300;
+pub const HR_HISTORY_CAPACITY: usize = 300;
+pub const RPM_HISTORY_CAPACITY: usize = 300;
+
 pub struct App {
     screen: Screen,
     selections: Selections,
@@ -208,6 +214,12 @@ pub struct App {
     userdata: UserData,
     workout_data: WorkoutData,
     preferences: Preferences,
+
+    // Rolling histories used to render the live graphs in the
+    // control panel. Capacity is fixed so the buffer never grows unbounded.
+    pub power_history: Vec<u64>,
+    pub hr_history: Vec<u16>,
+    pub rpm_history: Vec<u16>,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData, workout_data: WorkoutData) -> Self {
@@ -218,6 +230,9 @@ impl App {
             screen: Screen::default(),
             preferences: Preferences::new(),
             selections: Selections::new(),
+            power_history: Vec::with_capacity(POWER_HISTORY_CAPACITY),
+            hr_history: Vec::with_capacity(HR_HISTORY_CAPACITY),
+            rpm_history: Vec::with_capacity(RPM_HISTORY_CAPACITY),
         }
     }
     pub fn screen(&self) -> Screen {
@@ -251,6 +266,39 @@ impl App {
             Span::from("Tacx Flux S2"),
             Span::from("CONNECTED").style(Style::default().fg(Color::Green)),
         ]
+    }
+
+    /// Capacity of the rolling power history buffer (samples).
+    pub const fn power_history_capacity(&self) -> usize {
+        POWER_HISTORY_CAPACITY
+    }
+
+    /// Pushes the current power reading onto the rolling history buffer.
+    pub fn push_power_history(&mut self) {
+        if self.power_history.len() >= POWER_HISTORY_CAPACITY {
+            self.power_history.remove(0);
+        }
+        self.power_history.push(self.livedata.crnt_pwr as u64);
+    }
+
+    pub fn power_history(&self) -> &[u64] {
+        &self.power_history
+    }
+
+    /// Pushes the current heart rate onto the rolling history buffer.
+    pub fn push_hr_history(&mut self) {
+        if self.hr_history.len() >= HR_HISTORY_CAPACITY {
+            self.hr_history.remove(0);
+        }
+        self.hr_history.push(self.livedata.crnt_hr);
+    }
+
+    pub fn hr_history(&self) -> impl Iterator<Item = u64> + '_ {
+        self.hr_history.iter().map(|&x| u64::from(x))
+    }
+
+    pub fn rpm_history(&self) -> impl Iterator<Item = u64> + '_ {
+        self.rpm_history.iter().map(|&x| u64::from(x))
     }
 
     pub fn handle_key_press(&mut self, key_code: KeyCode) -> Action {
