@@ -162,12 +162,6 @@ impl Selections {
     pub fn main(&self) -> &MainSelection {
         &self.main_select
     }
-    pub fn control(&self) -> &ControlSelection {
-        &self.control_select
-    }
-    pub fn database(&self) -> &DatabaseSelection {
-        &self.database_select
-    }
     pub fn settings(&self) -> &SettingsSelection {
         &self.settings_select
     }
@@ -190,27 +184,6 @@ impl Selections {
             Screen::Database => self.database_select.prev(),
             Screen::Settings => self.settings_select.prev(),
             Screen::Stats => self.stats_select.prev(),
-        }
-    }
-}
-
-pub enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-pub trait Navigable: Sized {
-    fn neighbor(&self, dir: Direction) -> Option<Self>;
-}
-
-impl Navigable for MainSelection {
-    fn neighbor(&self, dir: Direction) -> Option<Self> {
-        match dir {
-            Direction::Down => None,
-            Direction::Up => None,
-            Direction::Left | Direction::Right => None,
         }
     }
 }

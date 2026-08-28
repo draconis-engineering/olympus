@@ -150,7 +150,7 @@ impl FitWriter {
         self.samples.push(s);
     }
 
-    pub fn sample_count(&self) -> usize {
+    pub fn _sample_count(&self) -> usize {
         self.samples.len()
     }
 

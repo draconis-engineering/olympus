@@ -45,7 +45,7 @@ impl Default for UserProfile {
 }
 
 /// Parses a .fit file and extracts the session summary data
-pub fn parse_fit_file(path: &Path) -> Result<FitSession, Box<dyn std::error::Error>> {
+pub fn _parse_fit_file(path: &Path) -> Result<FitSession, Box<dyn std::error::Error>> {
     let mut file = File::open(path)?;
     let records = fitparser::from_reader(&mut file)?;
     let mut session_data = FitSession::default();

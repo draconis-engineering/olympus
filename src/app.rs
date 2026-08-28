@@ -2,7 +2,6 @@
 //
 // App.rs is the main application struct and entry point for the TUI.
 
-use super::boot::restore;
 use super::data::UserProfile;
 use super::erg::Workout;
 use super::math;
@@ -10,15 +9,10 @@ use super::nav::{MainSelection, Selections};
 
 use crossterm::event::KeyCode;
 use ratatui::{
-    Terminal,
-    backend::CrosstermBackend,
     style::{Color, Style},
     text::Span,
 };
-use std::{
-    ops::{Deref, DerefMut},
-    u16,
-};
+use std::u16;
 
 // Live data from device
 pub struct LiveData {
@@ -141,11 +135,6 @@ impl LiveData {
     }
 }
 
-pub struct WorkoutData {
-    pub duration: u16,
-    pub total_distance: f32,
-}
-
 pub struct UserData {
     pub profile: UserProfile,
 }
@@ -153,40 +142,8 @@ impl UserData {
     pub fn new(profile: UserProfile) -> Self {
         Self { profile }
     }
-    pub fn username(&self) -> &str {
-        &self.profile.username
-    }
     pub fn ftp(&self) -> u16 {
         self.profile.ftp
-    }
-    pub fn maxhr(&self) -> u16 {
-        self.profile.max_hr
-    }
-    pub fn weight(&self) -> f32 {
-        self.profile.weight
-    }
-    pub fn height(&self) -> f32 {
-        self.profile.height
-    }
-}
-
-pub struct TUIGuard {
-    pub tui: Terminal<CrosstermBackend<std::io::Stdout>>,
-}
-impl Drop for TUIGuard {
-    fn drop(&mut self) {
-        let _ = restore();
-    }
-}
-impl Deref for TUIGuard {
-    type Target = Terminal<CrosstermBackend<std::io::Stdout>>;
-    fn deref(&self) -> &Terminal<CrosstermBackend<std::io::Stdout>> {
-        &self.tui
-    }
-}
-impl DerefMut for TUIGuard {
-    fn deref_mut(&mut self) -> &mut Terminal<CrosstermBackend<std::io::Stdout>> {
-        &mut self.tui
     }
 }
 
@@ -204,19 +161,6 @@ pub enum Screen {
 pub enum Action {
     Continue,
     Quit,
-}
-
-pub struct Preferences {
-    pub dark_mode: bool,
-    pub high_contrast: bool,
-}
-impl Preferences {
-    fn new() -> Self {
-        Self {
-            dark_mode: false,
-            high_contrast: false,
-        }
-    }
 }
 
 /// Capacity (in samples) of the rolling power, heart rate, and cadence history buffers.
@@ -391,8 +335,6 @@ pub struct App {
 
     pub livedata: LiveData,
     userdata: UserData,
-    workout_data: WorkoutData,
-    preferences: Preferences,
 
     // Rolling histories used to render the live graphs in the
     // control panel. Capacity is fixed so the buffer never grows unbounded.
@@ -410,13 +352,11 @@ pub struct App {
     pub settings: SettingsState,
 }
 impl App {
-    pub fn new(livedata: LiveData, userdata: UserData, workout_data: WorkoutData) -> Self {
+    pub fn new(livedata: LiveData, userdata: UserData) -> Self {
         Self {
             livedata,
             userdata,
-            workout_data,
             screen: Screen::default(),
-            preferences: Preferences::new(),
             selections: Selections::new(),
             power_history: Vec::with_capacity(POWER_HISTORY_CAPACITY),
             hr_history: Vec::with_capacity(HR_HISTORY_CAPACITY),
@@ -436,9 +376,6 @@ impl App {
     pub fn userdata(&self) -> &UserData {
         &self.userdata
     }
-    pub fn workout_data(&self) -> &WorkoutData {
-        &self.workout_data
-    }
 
     /// Loads a workout schedule into the app. `None` clears it (free ride).
     pub fn set_workout(&mut self, workout: Option<Workout>) {
@@ -450,10 +387,6 @@ impl App {
     }
     pub fn selections(&self) -> &Selections {
         &self.selections
-    }
-
-    pub fn preferences(&self) -> &Preferences {
-        &self.preferences
     }
 
     pub fn version(&self) -> &str {
@@ -977,14 +910,7 @@ mod tests {
         let backend = TestBackend::new(width, height);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let mut app = App::new(
-            LiveData::new(),
-            UserData::new(UserProfile::default()),
-            WorkoutData {
-                duration: 0,
-                total_distance: 0.0,
-            },
-        );
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
         app.screen = screen;
 
         // Give the control panel some graph history so the Chart path runs.

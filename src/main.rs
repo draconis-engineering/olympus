@@ -12,7 +12,7 @@ mod math;
 mod nav;
 mod render;
 
-use app::{Action, App, LiveData, UserData, WorkoutData};
+use app::{Action, App, LiveData, UserData};
 use boot::{init, restore};
 use chrono::Utc;
 use crossterm::event::{Event, KeyEventKind};
@@ -59,12 +59,7 @@ async fn main() -> io::Result<()> {
     let profile = data::load_profile();
     let userdata = UserData::new(profile.clone());
 
-    let workout_data = WorkoutData {
-        duration: 0,
-        total_distance: 0.0,
-    };
-
-    let mut app = App::new(livedata, userdata, workout_data);
+    let mut app = App::new(livedata, userdata);
     app.set_workout(resolve_workout(profile.ftp));
 
     let fps = Duration::from_secs_f64(1.0 / 60.0);

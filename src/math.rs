@@ -67,7 +67,7 @@ pub fn zone2color(zone: u16) -> Color {
 
 /// Pushes `pwr` onto a rolling history buffer of fixed capacity.
 /// Oldest entry is dropped when the buffer is full.
-pub fn push_history(buf: &mut Vec<u64>, pwr: u64, cap: usize) {
+pub fn _push_history(buf: &mut Vec<u64>, pwr: u64, cap: usize) {
     if buf.len() >= cap {
         buf.remove(0);
     }
