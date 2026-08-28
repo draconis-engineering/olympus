@@ -114,5 +114,5 @@ cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
 - [x] Rider profile (JSON) load/save
 - [x] FIT activity writer (Strava/Garmin-compatible)
 - [x] SQLite session persistence
-- [ ] Database browsing / workout history UI (v0.2)
-- [ ] Profile settings screen edits (v0.2)
+- [x] Database browsing / workout history UI (v0.2)
+- [x] Profile settings screen edits (v0.2)

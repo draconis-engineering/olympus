@@ -163,11 +163,7 @@ impl FitWriter {
         // Returns (avg_speed_mps_x1000, avg_hr, max_hr, avg_power, max_power,
         //          total_distance_mx100, total_calories, total_time_ms)
         let n = self.samples.len().max(1);
-        let total_dist: f32 = self
-            .samples
-            .last()
-            .map(|s| s.distance_m)
-            .unwrap_or(0.0);
+        let total_dist: f32 = self.samples.last().map(|s| s.distance_m).unwrap_or(0.0);
         let sum_speed: f32 = self.samples.iter().map(|s| s.speed_mps).sum();
         let sum_pwr: u64 = self.samples.iter().map(|s| s.power as u64).sum();
         let sum_hr: u64 = self.samples.iter().map(|s| s.heart_rate as u64).sum();
@@ -200,10 +196,10 @@ impl FitWriter {
             global: 0, // FILE_ID
             local: 0,
             fields: vec![
-                FitField::enum_(0, 4), // type = activity
-                FitField::uint16(1, 255), // Garmin manufacturer
+                FitField::enum_(0, 4),                 // type = activity
+                FitField::uint16(1, 255),              // Garmin manufacturer
                 FitField::uint16(2, 3277), // product (garmin: fēnix 5 => 2691; placeholder)
-                FitField::uint32z(3, 0), // serial
+                FitField::uint32z(3, 0),   // serial
                 FitField::uint32(4, fit_start as u32), // time_created
             ],
         };
@@ -220,17 +216,17 @@ impl FitWriter {
             local: 2,
             fields: vec![
                 FitField::uint32(253, fit_start as u32), // timestamp (end)
-                FitField::uint32(0, fit_start as u32), // start_time
-                FitField::uint32(2, total_ms), // total_elapsed_time (ms)
-                FitField::uint32(3, total_ms), // total_timer_time (ms)
-                FitField::uint32(4, dist100), // total_distance (m*100)
-                FitField::uint16(6, 0), // total_calories
-                FitField::uint16(7, avg_speed), // avg_speed (m/s*1000)
-                FitField::enum_(55, 2), // sport = cycling
-                FitField::uint8(9, avg_hr), // avg_heart_rate
-                FitField::uint8(10, max_hr), // max_heart_rate
-                FitField::uint16(13, avg_pwr), // avg_power
-                FitField::uint16(14, max_pwr), // max_power
+                FitField::uint32(0, fit_start as u32),   // start_time
+                FitField::uint32(2, total_ms),           // total_elapsed_time (ms)
+                FitField::uint32(3, total_ms),           // total_timer_time (ms)
+                FitField::uint32(4, dist100),            // total_distance (m*100)
+                FitField::uint16(6, 0),                  // total_calories
+                FitField::uint16(7, avg_speed),          // avg_speed (m/s*1000)
+                FitField::enum_(55, 2),                  // sport = cycling
+                FitField::uint8(9, avg_hr),              // avg_heart_rate
+                FitField::uint8(10, max_hr),             // max_heart_rate
+                FitField::uint16(13, avg_pwr),           // avg_power
+                FitField::uint16(14, max_pwr),           // max_power
             ],
         };
 
@@ -318,8 +314,8 @@ impl FitWriter {
 /// (`fit_crc.c`) — a CRC-16 computed nibble-at-a-time off a lookup table,
 /// starting from 0. This is CRC-16/ARC (poly 0x8005, reflected).
 const CRC_TABLE: [u16; 16] = [
-    0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, 0xA001, 0x6C00, 0x7800,
-    0xB401, 0x5000, 0x9C01, 0x8801, 0x4400,
+    0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, 0xA001, 0x6C00, 0x7800, 0xB401,
+    0x5000, 0x9C01, 0x8801, 0x4400,
 ];
 
 /// Update a running FIT CRC with one byte.

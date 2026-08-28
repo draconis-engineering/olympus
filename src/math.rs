@@ -116,11 +116,7 @@ pub fn normalized_power(raw: &[u64], sample_rate_hz: f64) -> f64 {
 
 /// Intensity Factor: Normalized Power / FTP.
 pub fn intensity_factor(np: f64, ftp: f64) -> f64 {
-    if ftp <= 0.0 {
-        0.0
-    } else {
-        np / ftp
-    }
+    if ftp <= 0.0 { 0.0 } else { np / ftp }
 }
 
 /// Training Stress Score (Coggan): TSS = (duration_s * NP * IF) / (FTP * 3600) * 100.

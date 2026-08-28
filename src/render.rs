@@ -2,7 +2,7 @@
 //
 // Rendering.rs is responsible for rendering the Olympus interface and its pages.
 
-use super::app::{App, Screen};
+use super::app::{App, DatabaseTab, Screen, SettingsField};
 use super::math::{coggan_pwr_model, olt_hr_model, zone2color};
 use super::nav::{MainSelection, SettingsSelection};
 
@@ -10,16 +10,50 @@ use chrono::Local;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
-use ratatui::symbols;
+use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Gauge, Paragraph, Sparkline};
+use ratatui::widgets::{
+    Axis, Block, BorderType, Borders, Chart, Dataset, Gauge, GraphType, Paragraph,
+};
 use tui_big_text::{BigText, PixelSize};
 
 // ====================================
 // --------- Helper Functions ---------
 // ====================================
 
-// Footer rendering function
+/// Convert the tail of a sample history into (x, y) points for a line chart,
+/// keeping at most `max_points` (so the visible line stays current and
+/// readable instead of compressing the whole ride into a few columns).
+fn tail_points<F>(vals: &[f64], max_points: usize, map: F) -> Vec<(f64, f64)>
+where
+    F: Fn(f64) -> f64,
+{
+    let n = vals.len().min(max_points);
+    let start = vals.len().saturating_sub(n);
+    vals[start..]
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| (i as f64, map(v)))
+        .collect()
+}
+
+/// Build a braille line chart rendered onto the given rectangle.
+fn line_chart<'a>(points: &'a [(f64, f64)], color: Color, max_y: f64) -> Chart<'a> {
+    let dataset = Dataset::default()
+        .marker(Marker::Braille)
+        .graph_type(GraphType::Line)
+        .style(Style::default().fg(color))
+        .data(points);
+    let x_axis = Axis::default()
+        .style(Style::default().fg(Color::DarkGray))
+        .bounds([0.0, (points.len() as f64).max(1.0) - 1.0]);
+    let y_axis = Axis::default()
+        .style(Style::default().fg(Color::DarkGray))
+        .bounds([0.0, max_y]);
+    Chart::new(vec![dataset]).x_axis(x_axis).y_axis(y_axis)
+}
+
+/// Footer rendering function
 fn footer(current: Screen, app: &App) -> Paragraph<'_> {
     let hlgt_stl = Style::default().fg(Color::Green); // Highlighted style
     let bhlgt_stl = Style::default().add_modifier(Modifier::BOLD); // Bold highlighted style
@@ -164,7 +198,6 @@ fn main_draw(frame: &mut Frame, area: Rect, app: &App) {
 fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let livedata = app.livedata();
     let userdata = app.userdata();
-    let userstats = &userdata.stats;
 
     // ============================================================
     // MAIN LAYOUT
@@ -198,7 +231,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     // POWER
     // ============================================================
 
-    let pwr_zone = coggan_pwr_model(livedata.crnt_pwr, userstats.ftp);
+    let pwr_zone = coggan_pwr_model(livedata.crnt_pwr, userdata.profile.ftp);
     let pwr_color = zone2color(pwr_zone);
 
     let pwrblock = Block::default()
@@ -212,8 +245,8 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let [pwr_header, pwr_main, pwr_graph, pwr_footer] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(6),
-        Constraint::Fill(1),
+        Constraint::Length(4),
+        Constraint::Min(2),
         Constraint::Length(2),
     ])
     .areas(pwrinner);
@@ -228,7 +261,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         ),
         Span::styled("  /  ", Style::default().fg(Color::DarkGray)),
         Span::styled(
-            format!("FTP {}W", userstats.ftp),
+            format!("FTP {}W", userdata.profile.ftp),
             Style::default().fg(Color::DarkGray),
         ),
     ]);
@@ -237,27 +270,27 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     // --- Big power number ---
 
+    let pwr_pixel = if pwr_main.height >= 6 {
+        PixelSize::Full
+    } else {
+        PixelSize::Quadrant
+    };
     let pwr_big = BigText::builder()
-        .pixel_size(PixelSize::Full)
+        .pixel_size(pwr_pixel)
         .style(Style::default().fg(pwr_color))
         .lines(vec![format!("{}", livedata.crnt_pwr).into()])
         .build();
 
     frame.render_widget(pwr_big, pwr_main);
 
-    // --- Power graph (rolling Sparkline) ---
+    // --- Power graph (braille line over the trailing window) ---
 
-    let pwr_history = app.power_history();
-    let pwr_max = userstats.ftp.max(1) as u64;
+    let pwr_hist: Vec<f64> = app.power_history().iter().map(|&x| x as f64).collect();
+    let pwr_hist_max = pwr_hist.iter().copied().fold(0.0, f64::max);
+    let pwr_max = (pwr_hist_max).max(userdata.profile.ftp as f64).max(10.0) * 1.1;
+    let pwr_points = tail_points(&pwr_hist, pwr_graph.width as usize, |v| v);
 
-    let pwr_spark = Sparkline::default()
-        .block(Block::default().borders(Borders::NONE))
-        .data(pwr_history.into_iter())
-        .max(pwr_max)
-        .bar_set(symbols::bar::NINE_LEVELS)
-        .style(Style::default().fg(pwr_color));
-
-    frame.render_widget(pwr_spark, pwr_graph);
+    frame.render_widget(line_chart(&pwr_points, pwr_color, pwr_max), pwr_graph);
 
     // --- Power footer ---
 
@@ -301,10 +334,10 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     // HEART RATE
     // ============================================================
 
-    let hr_zone = olt_hr_model(livedata.crnt_hr, userstats.maxhr);
+    let hr_zone = olt_hr_model(livedata.crnt_hr, userdata.profile.max_hr);
 
-    let hr_percent = if userstats.maxhr > 0 {
-        (livedata.crnt_hr as f32 / userstats.maxhr as f32 * 100.0) as u16
+    let hr_percent = if userdata.profile.max_hr > 0 {
+        (livedata.crnt_hr as f32 / userdata.profile.max_hr as f32 * 100.0) as u16
     } else {
         0
     };
@@ -320,34 +353,34 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let [hr_top, hr_graph, hr_bottom] = Layout::vertical([
         Constraint::Length(3),
-        Constraint::Fill(1),
+        Constraint::Min(2),
         Constraint::Length(1),
     ])
     .areas(hrinner);
 
     // --- Big heart rate number ---
 
+    let hr_pixel = if hr_top.height >= 6 {
+        PixelSize::Full
+    } else {
+        PixelSize::Quadrant
+    };
     let hr_big = BigText::builder()
-        .pixel_size(PixelSize::Full)
+        .pixel_size(hr_pixel)
         .style(Style::default().fg(Color::Red))
         .lines(vec![format!("{} BPM", livedata.crnt_hr).into()])
         .build();
 
     frame.render_widget(hr_big, hr_top);
 
-    // --- Heart rate graph ---
+    // --- Heart rate graph (braille line over the trailing window) ---
 
-    let hr_history = app.hr_history();
-    let hr_max = userstats.maxhr.max(1) as u64;
+    let hr_hist: Vec<f64> = app.hr_history().map(|x| x as f64).collect();
+    let hr_hist_max = hr_hist.iter().copied().fold(0.0, f64::max);
+    let hr_max = hr_hist_max.max(userdata.profile.max_hr as f64).max(1.0) * 1.1;
+    let hr_points = tail_points(&hr_hist, hr_graph.width as usize, |v| v);
 
-    let hr_spark = Sparkline::default()
-        .block(Block::default().borders(Borders::NONE))
-        .data(hr_history.into_iter())
-        .max(hr_max)
-        .bar_set(symbols::bar::NINE_LEVELS)
-        .style(Style::default().fg(Color::Red));
-
-    frame.render_widget(hr_spark, hr_graph);
+    frame.render_widget(line_chart(&hr_points, Color::Red, hr_max), hr_graph);
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -379,8 +412,12 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let rpminner = rpmblock.inner(rpmrect);
     frame.render_widget(rpmblock, rpmrect);
 
-    let [rpm_value, rpm_gauge] =
-        Layout::vertical([Constraint::Length(2), Constraint::Fill(1)]).areas(rpminner);
+    let [rpm_value, rpm_graph, rpm_footer] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Min(2),
+        Constraint::Length(1),
+    ])
+    .areas(rpminner);
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -396,17 +433,24 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         rpm_value,
     );
 
-    let rpm_ratio = (livedata.crnt_rpm as f64 / 120.0).clamp(0.0, 1.0);
+    let rpm_hist: Vec<f64> = app.rpm_history().map(|x| x as f64).collect();
+    let rpm_hist_max = rpm_hist.iter().copied().fold(0.0, f64::max);
+    let rpm_max = rpm_hist_max.max(1.0) * 1.1;
+    let rpm_points = tail_points(&rpm_hist, rpm_graph.width as usize, |v| v);
+    frame.render_widget(
+        line_chart(&rpm_points, Color::LightBlue, rpm_max),
+        rpm_graph,
+    );
 
     frame.render_widget(
-        Gauge::default()
-            .ratio(rpm_ratio)
-            .label(format!(
-                "AVG {}  MAX {}",
-                livedata.avg_rpm, livedata.max_rpm
-            ))
-            .gauge_style(Style::default().fg(Color::LightBlue)),
-        rpm_gauge,
+        Paragraph::new(Line::from(vec![
+            Span::styled("AVG ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}", livedata.avg_rpm)),
+            Span::styled("  MAX ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}", livedata.max_rpm)),
+        ]))
+        .alignment(Alignment::Center),
+        rpm_footer,
     );
 
     // ============================================================
@@ -422,8 +466,12 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let velinner = velblock.inner(velrect);
     frame.render_widget(velblock, velrect);
 
-    let [vel_value, vel_gauge] =
-        Layout::vertical([Constraint::Length(2), Constraint::Fill(1)]).areas(velinner);
+    let [vel_value, vel_graph, vel_footer] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Min(2),
+        Constraint::Length(1),
+    ])
+    .areas(velinner);
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -439,17 +487,21 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         vel_value,
     );
 
-    let speed_ratio = (livedata.crnt_vel as f64 / 60.0).clamp(0.0, 1.0);
+    let vel_hist: Vec<f64> = app.vel_history().iter().map(|&x| x as f64).collect();
+    let vel_hist_max = vel_hist.iter().copied().fold(0.0, f64::max);
+    let vel_max = vel_hist_max.max(1.0) * 1.1;
+    let vel_points = tail_points(&vel_hist, vel_graph.width as usize, |v| v);
+    frame.render_widget(line_chart(&vel_points, Color::Green, vel_max), vel_graph);
 
     frame.render_widget(
-        Gauge::default()
-            .ratio(speed_ratio)
-            .label(format!(
-                "AVG {:.1}  MAX {:.1}",
-                livedata.avg_vel, livedata.max_vel
-            ))
-            .gauge_style(Style::default().fg(Color::Green)),
-        vel_gauge,
+        Paragraph::new(Line::from(vec![
+            Span::styled("AVG ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{:.1}", livedata.avg_vel)),
+            Span::styled("  MAX ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{:.1}", livedata.max_vel)),
+        ]))
+        .alignment(Alignment::Center),
+        vel_footer,
     );
 
     // ============================================================
@@ -467,53 +519,39 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let zone_layout: [Rect; 7] = Layout::vertical(vec![Constraint::Length(1); 7]).areas(pwrzinner);
 
-    // Coggan boundaries as percentage of FTP.
-    let zone_limits = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, 2.00];
-
-    let current_ratio = if userstats.ftp > 0 {
-        livedata.crnt_pwr as f64 / userstats.ftp as f64
-    } else {
-        0.0
-    };
+    // Distribution of ride time spent in each Coggan zone, shown as a bar
+    // scaled to the zone where the rider spent the most time.
+    let max_zone = livedata
+        .zone_seconds
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let live_zone = coggan_pwr_model(livedata.crnt_pwr, userdata.profile.ftp);
 
     for (i, rect) in zone_layout.iter().enumerate() {
-        let lower = if i == 0 { 0.0 } else { zone_limits[i - 1] };
-
-        let upper = zone_limits[i];
-
-        let ratio = if current_ratio < lower {
-            0.0
-        } else if current_ratio >= upper {
-            1.0
-        } else {
-            (current_ratio - lower) / (upper - lower)
-        };
-
-        let is_current = current_ratio >= lower && current_ratio < upper;
+        let z = (i + 1) as u16;
+        let secs = livedata.zone_seconds[i];
+        let ratio = secs as f64 / max_zone as f64;
+        let is_current = live_zone == z;
 
         let style = if is_current {
             Style::default()
-                .fg(Color::Yellow)
+                .fg(zone2color(z))
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(zone2color(z))
         };
 
-        let label = if i == 0 {
-            format!("Z1  <55%")
-        } else {
-            format!(
-                "Z{}  {}-{}%",
-                i + 1,
-                (lower * 100.0) as u16,
-                (upper * 100.0) as u16,
-            )
-        };
+        let prefix = if is_current { "▶" } else { " " };
+        let label = format!("{prefix}Z{z} {:>2}:{:02}", secs / 60, secs % 60);
 
         frame.render_widget(
             Gauge::default()
                 .ratio(ratio.clamp(0.0, 1.0))
                 .label(label)
+                .use_unicode(true)
                 .gauge_style(style),
             *rect,
         );
@@ -564,23 +602,85 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let intvlinner = intvlblock.inner(intvlrect);
     frame.render_widget(intvlblock, intvlrect);
 
+    let elapsed = livedata.elapsed_secs;
+    let interval_lines: Vec<Line> = match app.workout() {
+        Some(w) => {
+            let name = w.name.clone().unwrap_or_else(|| "Workout".to_string());
+            let total = w.total_seconds;
+            match w.step_at(elapsed) {
+                Some(step) => {
+                    let step_no = w
+                        .steps
+                        .iter()
+                        .position(|s| {
+                            s.start_secs == step.start_secs && s.target_power == step.target_power
+                        })
+                        .unwrap_or(0)
+                        + 1;
+                    let step_total = w.steps.len();
+                    let done = (elapsed.saturating_sub(step.start_secs)) as i64;
+                    let remain = (step.end_secs.saturating_sub(elapsed)) as i64;
+                    vec![
+                        Line::from(Span::styled(
+                            format!("{name}  {step_no}/{step_total}"),
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("TARGET ", Color::DarkGray),
+                            Span::styled(
+                                format!("{}W", step.target_power),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        ]),
+                        Line::from(""),
+                        Line::from(Span::styled(
+                            format!("in {:02}:{:02}", done / 60, done % 60),
+                            Color::LightGreen,
+                        )),
+                        Line::from(Span::styled(
+                            format!("rem {:02}:{:02}", remain / 60, remain % 60),
+                            Color::LightRed,
+                        )),
+                    ]
+                }
+                None => {
+                    let state = if w.is_finished(elapsed) {
+                        "COMPLETE"
+                    } else {
+                        "PAUSED"
+                    };
+                    vec![
+                        Line::from(Span::styled(
+                            format!("{name}  {state}"),
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        )),
+                        Line::from(""),
+                        Line::from(Span::styled(format!("{elapsed}/{total}s"), Color::DarkGray)),
+                    ]
+                }
+            }
+        }
+        None => vec![
+            Line::from(Span::styled(
+                "FREE RIDE",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled("ERC off - ride freely", Color::DarkGray)),
+        ],
+    };
+
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::from("CURRENT"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("TARGET ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    format!("{}W", livedata.target_pwr),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(""),
-            Line::from("Workout data"),
-        ])
-        .alignment(Alignment::Center),
+        Paragraph::new(interval_lines).alignment(Alignment::Center),
         intvlinner,
     );
 
@@ -597,18 +697,43 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let sysinner = sysblock.inner(sysrect);
     frame.render_widget(sysblock, sysrect);
 
-    // We only use values that are currently exposed by the
-    // function's App API. Trainer/device connection state can
-    // be dropped in here later when those fields are exposed.
+    let uptime_h = livedata.elapsed_secs / 3600;
+    let uptime_m = (livedata.elapsed_secs / 60) % 60;
+    let uptime_s = livedata.elapsed_secs % 60;
+    let uptime_str = if uptime_h > 0 {
+        format!("{uptime_h:02}:{uptime_m:02}:{uptime_s:02}")
+    } else {
+        format!("{uptime_m:02}:{uptime_s:02}")
+    };
+
+    // Combine the (single) mocked connection into one readable line.
+    let conn_text: String = app
+        .connection()
+        .iter()
+        .map(|s| s.content.clone())
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let systext = Paragraph::new(vec![
         Line::from(vec![
+            Span::styled("BT        ", Style::default().fg(Color::DarkGray)),
+            Span::styled(conn_text, Style::default().fg(Color::Green)),
+        ]),
+        Line::from(vec![
+            Span::styled("UPTIME    ", Style::default().fg(Color::DarkGray)),
+            Span::raw(uptime_str),
+        ]),
+        Line::from(vec![
+            Span::styled("VERSION   ", Style::default().fg(Color::DarkGray)),
+            Span::raw(app.version().to_string()),
+        ]),
+        Line::from(vec![
             Span::styled("FTP       ", Style::default().fg(Color::DarkGray)),
-            Span::raw(format!("{} W", userstats.ftp)),
+            Span::raw(format!("{} W", userdata.profile.ftp)),
         ]),
         Line::from(vec![
             Span::styled("MAX HR    ", Style::default().fg(Color::DarkGray)),
-            Span::raw(format!("{} BPM", userstats.maxhr)),
+            Span::raw(format!("{} BPM", userdata.profile.max_hr)),
         ]),
         Line::from(vec![
             Span::styled("POWER     ", Style::default().fg(Color::DarkGray)),
@@ -624,10 +749,6 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(Color::Red),
             ),
         ]),
-        Line::from(vec![
-            Span::styled("CADENCE   ", Style::default().fg(Color::DarkGray)),
-            Span::raw(format!("{} RPM", livedata.crnt_rpm)),
-        ]),
     ]);
 
     frame.render_widget(systext, sysinner);
@@ -636,164 +757,149 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 // -------------------------------------------------------
 
 fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
-    let _selected = app.selections().database();
-
-    // Colors
     let gray = Style::default().fg(Color::Gray);
     let dark_gray = Style::default().fg(Color::DarkGray);
     let white = Style::default().fg(Color::White);
-    let bold_white = white.add_modifier(Modifier::BOLD);
 
-    // Base Layout Structure
     let [sidebar_area, list_area] =
-        Layout::horizontal([Constraint::Percentage(32), Constraint::Percentage(68)]).areas(area);
+        Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)]).areas(area);
 
-    let [searchbar_area, filters_area, preview_area, buttons_area] = Layout::vertical([
-        Constraint::Length(3), // Search input block
-        Constraint::Length(7), // Filter categories
-        Constraint::Min(5),    // Formerly 'etc' - now a Workout Preview block!
-        Constraint::Length(3), // Interactive hotkeys
-    ])
-    .areas(sidebar_area);
-
-    // --- SIDEBAR BLOCK 1: SEARCH BAR ---
-    let search_text = Line::from(vec![
-        Span::styled(" Watopia", white),
-        Span::styled("█", Style::default().fg(Color::Yellow)), // Simulated cursor
-    ]);
+    // --- LEFT SIDEBAR: help + summary ---
+    let tab_label = match app.database.tab {
+        DatabaseTab::Workouts => "Workouts",
+        DatabaseTab::Sessions => "Sessions",
+    };
+    let selected_index = app.database.selected;
+    let total = match app.database.tab {
+        DatabaseTab::Workouts => app.database.workouts.len(),
+        DatabaseTab::Sessions => app.database.sessions.len(),
+    };
+    let sidebar_lines = vec![
+        Line::from(Span::styled(
+            " Database ",
+            white.add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Active: ", gray),
+            Span::styled(tab_label, Style::default().fg(Color::Cyan)),
+        ]),
+        Line::from(format!(
+            "Row {} / {}",
+            if total > 0 { selected_index + 1 } else { 0 },
+            total
+        )),
+        Line::from(""),
+        Line::from(Span::styled("Keys", white.add_modifier(Modifier::BOLD))),
+        Line::from(vec![
+            Span::styled("[Up/Down]", Style::default().fg(Color::Yellow)),
+            Span::styled(" move row", gray),
+        ]),
+        Line::from(vec![
+            Span::styled("[Left/Right]", Style::default().fg(Color::Yellow)),
+            Span::styled(" switch list", gray),
+        ]),
+        Line::from(vec![
+            Span::styled("[Enter]", Style::default().fg(Color::Yellow)),
+            Span::styled(" start workout", gray),
+        ]),
+        Line::from(vec![
+            Span::styled("[d]", Style::default().fg(Color::Yellow)),
+            Span::styled(" main menu", gray),
+        ]),
+    ];
     frame.render_widget(
-        Paragraph::new(search_text).block(
+        Paragraph::new(sidebar_lines).block(
             Block::new()
                 .borders(Borders::ALL)
-                .title(" 🔍 Search Workouts ")
+                .title(" Info ")
                 .fg(Color::DarkGray),
         ),
-        searchbar_area,
+        sidebar_area,
     );
 
-    // --- SIDEBAR BLOCK 2: FILTERS ---
-    let filter_lines = vec![
-        Line::from(vec![
-            Span::styled(" 🔘 TYPE: ", gray),
-            Span::styled(
-                "[ Intervals ]",
+    // --- RIGHT: ACTIVE LIST ---
+    let (title, rows): (&'static str, Vec<Line>) = match app.database.tab {
+        DatabaseTab::Workouts => {
+            let rows: Vec<Line> = app
+                .database
+                .workouts
+                .iter()
+                .enumerate()
+                .map(|(i, w)| {
+                    let is_sel = i == selected_index;
+                    let name = w.path.rsplit('/').next().unwrap_or(&w.path).to_string();
+                    let marker = if is_sel { " ▶ " } else { "   " };
+                    Line::from(vec![
+                        Span::styled(
+                            marker,
+                            if is_sel {
+                                Style::default()
+                                    .fg(Color::Cyan)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                gray
+                            },
+                        ),
+                        Span::styled(
+                            name.clone(),
+                            if is_sel {
+                                white.add_modifier(Modifier::BOLD)
+                            } else {
+                                gray
+                            },
+                        ),
+                    ])
+                })
+                .collect();
+            (" Workouts ", rows)
+        }
+        DatabaseTab::Sessions => {
+            let header = Line::from(vec![Span::styled(
+                "  Date                        Dist   AvgP   MaxP",
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("  Tempo", gray),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(" ⏳ DURATION: ", gray),
-            Span::styled(" <30m", gray),
-            Span::styled(
-                "  [ 30-60m ]",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("  60m+", gray),
-        ]),
-    ];
+            )]);
+            let mut rows = vec![header];
+            for (i, s) in app.database.sessions.iter().enumerate() {
+                let is_sel = i == selected_index;
+                let line = Line::from(vec![
+                    Span::styled(
+                        if is_sel { "▶ " } else { "  " },
+                        if is_sel {
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            gray
+                        },
+                    ),
+                    Span::styled(
+                        format!(
+                            "{:>24} {:>7.1} {:>6} {:>6}",
+                            s.recorded_at, s.total_distance, s.avg_power, s.max_power
+                        ),
+                        if is_sel { white } else { gray },
+                    ),
+                ]);
+                rows.push(line);
+            }
+            if rows.len() == 1 {
+                rows.push(Line::from(Span::styled(
+                    "  No sessions recorded yet.",
+                    dark_gray,
+                )));
+            }
+            (" Session History ", rows)
+        }
+    };
+
     frame.render_widget(
-        Paragraph::new(filter_lines).block(
+        Paragraph::new(rows).block(
             Block::new()
                 .borders(Borders::ALL)
-                .title(" 🎛️ Active Filters ")
-                .fg(Color::DarkGray),
-        ),
-        filters_area,
-    );
-
-    // --- SIDEBAR BLOCK 3: SELECTED WORKOUT PREVIEW (Formerly etc) ---
-    // Shows the exact power step breakdown for whatever row is currently picked
-    let preview_lines = vec![
-        Line::from(Span::styled(" \"SST Short\" Profile Preview:", gray)),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(" ■ Warmup: ", Style::default().fg(Color::LightGreen)),
-            Span::styled("10 mins ramping 100W -> 180W", white),
-        ]),
-        Line::from(vec![
-            Span::styled(" ■ Work:   ", Style::default().fg(Color::Yellow)),
-            Span::styled("3x 5 mins @ 240W (Zone 4)", white),
-        ]),
-        Line::from(vec![
-            Span::styled(" ■ Rest:   ", Style::default().fg(Color::LightBlue)),
-            Span::styled("3x 3 mins @ 140W (Zone 2)", white),
-        ]),
-        Line::from(vec![
-            Span::styled(" ■ Cooldown:", Style::default().fg(Color::Green)),
-            Span::styled(" 5 mins gradual recovery", white),
-        ]),
-    ];
-    frame.render_widget(
-        Paragraph::new(preview_lines).block(
-            Block::new()
-                .borders(Borders::ALL)
-                .title(" 📊 Profile Info ")
-                .fg(Color::White),
-        ),
-        preview_area,
-    );
-
-    // --- SIDEBAR BLOCK 4: SIDEBAR BUTTONS ---
-    let footer_buttons = Line::from(vec![
-        Span::styled(" [Tab]", Style::default().fg(Color::Yellow)),
-        Span::styled(" Switch Pane ", gray),
-        Span::styled(" [R]", Style::default().fg(Color::Red)),
-        Span::styled(" Reset Filters", gray),
-    ]);
-    frame.render_widget(
-        Paragraph::new(footer_buttons)
-            .alignment(Alignment::Center)
-            .block(Block::new().borders(Borders::ALL).fg(Color::DarkGray)),
-        buttons_area,
-    );
-
-    // --- MAIN BLOCK: WORKOUT LIST MATRIX ---
-    // High-visibility table rows resembling a clean gaming catalog selection screen
-    let workout_list = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(
-                " ▶  [VO2 Max] ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("Gorilla Intervals        ", bold_white),
-            Span::styled("⏱ 45 mins  ", gray),
-            Span::styled("⚡ 320 TSS", dark_gray),
-        ]),
-        Line::from(Span::styled(
-            "     ↳ Focus: Burst power capacity & rapid clearance.",
-            dark_gray,
-        )),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(" ⚡  [SweetSpot] ", Style::default().fg(Color::Yellow)),
-            Span::styled("SST Short (Active Plan) ", white),
-            Span::styled("⏱ 50 mins  ", gray),
-            Span::styled("⚡ 210 TSS", dark_gray),
-        ]),
-        Line::from(Span::styled(
-            "     ↳ Focus: Aerobic engine rebuilding without heavy exhaustion.",
-            dark_gray,
-        )),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(" ⏱  [Recovery]  ", Style::default().fg(Color::LightBlue)),
-            Span::styled("Active Flush             ", gray),
-            Span::styled("⏱ 30 mins  ", gray),
-            Span::styled("⚡ 080 TSS", dark_gray),
-        ]),
-    ];
-
-    frame.render_widget(
-        Paragraph::new(workout_list).block(
-            Block::new()
-                .borders(Borders::ALL)
-                .title(" 🚴 Available Workout Modules ")
+                .title(title)
                 .fg(Color::White),
         ),
         list_area,
@@ -931,15 +1037,74 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
             "System Information\n------------------\nVersion: {}",
             app.version()
         )),
-        SettingsSelection::User => Paragraph::new(vec![
-            Line::from("User Settings"),
-            Line::from("--------------"),
-            Line::from(format!("[{}] Dark Mode", app.preferences().dark_mode)),
-            Line::from(format!(
-                "[{}] High Contrast",
-                app.preferences().high_contrast
-            )),
-        ]),
+        SettingsSelection::User => {
+            let profile = &app.userdata().profile;
+            let st = &app.settings;
+            let field_line = |label: &str, value: String, f: SettingsField| {
+                let active = st.field == f;
+                let display = if active && st.editing {
+                    format!("> {}: {}_", label, st.draft)
+                } else if active {
+                    format!("> {}: {}", label, value)
+                } else {
+                    format!("  {}: {}", label, value)
+                };
+                Line::from(vec![Span::styled(
+                    display,
+                    if active {
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Gray)
+                    },
+                )])
+            };
+            let mut lines = vec![
+                Line::from("User Settings"),
+                Line::from("--------------"),
+                Line::from(Span::styled(
+                    "Edit rider profile. Changes apply live.",
+                    Style::default().fg(Color::DarkGray),
+                )),
+                Line::from(""),
+            ];
+            lines.push(field_line(
+                "Name",
+                profile.username.clone(),
+                SettingsField::Name,
+            ));
+            lines.push(field_line(
+                "Weight (kg)",
+                format!("{:.1}", profile.weight),
+                SettingsField::Weight,
+            ));
+            lines.push(field_line(
+                "Height (cm)",
+                format!("{:.1}", profile.height),
+                SettingsField::Height,
+            ));
+            lines.push(field_line(
+                "FTP (W)",
+                format!("{}", profile.ftp),
+                SettingsField::Ftp,
+            ));
+            lines.push(field_line(
+                "Max HR (BPM)",
+                format!("{}", profile.max_hr),
+                SettingsField::MaxHr,
+            ));
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                if st.editing {
+                    "Editing: Enter to save, Esc to cancel, Backspace to delete"
+                } else {
+                    "Up/Down: select field   Enter: edit   Tab: switch panel"
+                },
+                Style::default().fg(Color::DarkGray),
+            )));
+            Paragraph::new(lines)
+        }
     };
 
     frame.render_widget(content, inner_controls_area);

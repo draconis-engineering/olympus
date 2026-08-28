@@ -12,7 +12,7 @@ mod math;
 mod nav;
 mod render;
 
-use app::{Action, App, LiveData, UserData, UserStats, WorkoutData};
+use app::{Action, App, LiveData, UserData, WorkoutData};
 use boot::{init, restore};
 use chrono::Utc;
 use crossterm::event::{Event, KeyEventKind};
@@ -57,15 +57,7 @@ async fn main() -> io::Result<()> {
 
     // Load the rider profile (JSON) instead of hardcoded values.
     let profile = data::load_profile();
-    let stats = UserStats {
-        maxhr: profile.max_hr,
-        ftp: profile.ftp,
-        _maxpwr: 0,
-    };
-    let userdata = UserData {
-        username: profile.username.clone(),
-        stats,
-    };
+    let userdata = UserData::new(profile.clone());
 
     let workout_data = WorkoutData {
         duration: 0,
@@ -86,7 +78,11 @@ async fn main() -> io::Result<()> {
     } = ble::start_driver();
 
     // If a workout is active, slap its first target on the trainer immediately.
-    if let Some(target) = app.workout().and_then(|w| w.step_at(0)).map(|s| s.target_power) {
+    if let Some(target) = app
+        .workout()
+        .and_then(|w| w.step_at(0))
+        .map(|s| s.target_power)
+    {
         let _ = cmd_tx.send(ble::BleCommand::SetTargetPower(target)).await;
     }
 
@@ -94,19 +90,22 @@ async fn main() -> io::Result<()> {
     app.push_power_history();
     app.push_hr_history();
     app.push_rpm_history();
+    app.push_velocity_history();
     app.recompute_metrics(profile.ftp as f32, 1.0);
 
     // ---- Key events (blocking read moved off the async loop) ---------------
     let (key_tx, key_rx) = mpsc::channel();
-    std::thread::spawn(move || loop {
-        match crossterm::event::read() {
-            Ok(Event::Key(k)) => {
-                if key_tx.send(k).is_err() {
-                    break;
+    std::thread::spawn(move || {
+        loop {
+            match crossterm::event::read() {
+                Ok(Event::Key(k)) => {
+                    if key_tx.send(k).is_err() {
+                        break;
+                    }
                 }
+                Ok(_) => {}
+                Err(_) => break,
             }
-            Ok(_) => {}
-            Err(_) => break,
         }
     });
 
@@ -166,6 +165,7 @@ async fn main() -> io::Result<()> {
             app.push_power_history();
             app.push_hr_history();
             app.push_rpm_history();
+            app.push_velocity_history();
             app.recompute_metrics(profile.ftp as f32, 1.0);
 
             // Record a FIT sample once per second.
@@ -196,8 +196,7 @@ async fn main() -> io::Result<()> {
     if !fit.is_empty() {
         std::fs::create_dir_all("data/.fit").ok();
         let stamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let fit_path = std::path::Path::new("data/.fit")
-            .join(format!("ride_{stamp}.fit"));
+        let fit_path = std::path::Path::new("data/.fit").join(format!("ride_{stamp}.fit"));
         match fit.finish(&fit_path) {
             Ok(_) => log::info!("Wrote {}", fit_path.display()),
             Err(e) => log::error!("Failed to write FIT: {e}"),
@@ -206,8 +205,7 @@ async fn main() -> io::Result<()> {
         // Persist a session summary to SQLite.
         if let Ok(conn) = data::init_db(std::path::Path::new("data/olympus.db")) {
             let avg_vel = if app.livedata.elapsed_secs > 0 {
-                app.livedata.elapsed_distance
-                    / (app.livedata.elapsed_secs as f32 / 3600.0)
+                app.livedata.elapsed_distance / (app.livedata.elapsed_secs as f32 / 3600.0)
             } else {
                 0.0
             };

@@ -9,8 +9,8 @@
 // Tacx Flux S2 (FE-C over BLE) is driven end-to-end.
 
 use btleplug::api::{
-    bleuuid::uuid_from_u16, Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _,
-    ScanFilter, ValueNotification, WriteType,
+    Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
+    ValueNotification, WriteType, bleuuid::uuid_from_u16,
 };
 use btleplug::platform::{Manager, Peripheral};
 use futures::StreamExt;
@@ -55,9 +55,7 @@ pub enum BleState {
     Idle,
     Scanning,
     Connecting,
-    Connected {
-        name: String,
-    },
+    Connected { name: String },
     Error(String),
 }
 
@@ -125,7 +123,9 @@ async fn driver_loop(
         }
         // If a command arrives that asks for a scan, loop around.
         match cmd_rx.try_recv() {
-            Ok(BleCommand::Scan) | Ok(BleCommand::SetTargetPower(_)) | Ok(BleCommand::Disconnect) => {
+            Ok(BleCommand::Scan)
+            | Ok(BleCommand::SetTargetPower(_))
+            | Ok(BleCommand::Disconnect) => {
                 continue;
             }
             Err(_) => {}
@@ -133,10 +133,14 @@ async fn driver_loop(
     };
 
     state_send(BleState::Connected {
-        name: peripheral.properties().await.map(|p| {
-            p.and_then(|pp| pp.local_name)
-                .unwrap_or_else(|| "Trainer".to_string())
-        }).unwrap_or_else(|_| "Trainer".to_string()),
+        name: peripheral
+            .properties()
+            .await
+            .map(|p| {
+                p.and_then(|pp| pp.local_name)
+                    .unwrap_or_else(|| "Trainer".to_string())
+            })
+            .unwrap_or_else(|_| "Trainer".to_string()),
     });
 
     // Discover services and subscribe to the characteristics we need.
@@ -256,7 +260,9 @@ async fn find_trainer() -> Result<Option<Peripheral>, String> {
     match candidate {
         Some(p) => {
             // Connect with a sensible timeout.
-            p.connect().await.map_err(|e| format!("connect failed: {e}"))?;
+            p.connect()
+                .await
+                .map_err(|e| format!("connect failed: {e}"))?;
             Ok(Some(p))
         }
         None => Ok(None),
@@ -301,12 +307,14 @@ async fn subscribe_all(
     }
 
     // Send an initial telemetry sample so the UI has *something* immediately.
-    let _ = tel_tx.send(Telemetry {
-        power: None,
-        cadence: None,
-        heart_rate: None,
-        speed: None,
-    }).await;
+    let _ = tel_tx
+        .send(Telemetry {
+            power: None,
+            cadence: None,
+            heart_rate: None,
+            speed: None,
+        })
+        .await;
 
     subs
 }
@@ -447,7 +455,11 @@ async fn emit_simulated(tel_tx: &Sender<Telemetry>, cmd_rx: &mut Receiver<BleCom
             .await;
 
         // Give up early if the UI asks us to scan.
-        if cmd_rx.try_recv().map(|c| c == BleCommand::Scan).unwrap_or(false) {
+        if cmd_rx
+            .try_recv()
+            .map(|c| c == BleCommand::Scan)
+            .unwrap_or(false)
+        {
             break;
         }
         time::sleep(Duration::from_millis(200)).await;

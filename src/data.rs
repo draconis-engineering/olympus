@@ -178,3 +178,93 @@ pub fn save_fit_session(
     )?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Database reading / browsing
+// ---------------------------------------------------------------------------
+
+/// One stored session row, as read back from the SQLite history.
+#[derive(Debug, Clone, Default)]
+pub struct StoredSession {
+    pub id: i64,
+    pub filename: String,
+    pub total_distance: f32,
+    pub total_calories: f32,
+    pub avg_speed: f32,
+    pub max_speed: f32,
+    pub max_heart_rate: u16,
+    pub avg_heart_rate: u16,
+    pub max_power: u16,
+    pub avg_power: u16,
+    pub recorded_at: String,
+}
+
+/// Load the most recent stored sessions (newest first).
+pub fn list_sessions(conn: &Connection, limit: usize) -> rusqlite::Result<Vec<StoredSession>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, filename, total_distance, total_calories, avg_speed, max_speed, \
+         max_heart_rate, avg_heart_rate, max_power, avg_power, recorded_at \
+         FROM fit_sessions ORDER BY id DESC LIMIT ?1",
+    )?;
+
+    let rows = stmt.query_map([limit as i64], |row| {
+        Ok(StoredSession {
+            id: row.get(0)?,
+            filename: row.get(1)?,
+            total_distance: row.get(2)?,
+            total_calories: row.get(3)?,
+            avg_speed: row.get(4)?,
+            max_speed: row.get(5)?,
+            max_heart_rate: row.get::<_, i64>(6)? as u16,
+            avg_heart_rate: row.get::<_, i64>(7)? as u16,
+            max_power: row.get::<_, i64>(8)? as u16,
+            avg_power: row.get::<_, i64>(9)? as u16,
+            recorded_at: row.get(10)?,
+        })
+    })?;
+
+    rows.collect()
+}
+
+/// Directory that stores the rider's workout files.
+pub const WORKOUTS_DIR: &str = "data/workouts";
+
+/// One workout available for loading.
+#[derive(Debug, Clone)]
+pub struct WorkoutEntry {
+    pub name: String,
+    pub path: String,
+}
+
+/// Scan the workouts directory for `.zwo` / `.erg` files.
+pub fn list_workout_files() -> Vec<WorkoutEntry> {
+    let Ok(read_dir) = std::fs::read_dir(WORKOUTS_DIR) else {
+        return Vec::new();
+    };
+
+    let mut entries = Vec::new();
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        let is_workout = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("zwo") || e.eq_ignore_ascii_case("erg"))
+            .unwrap_or(false);
+        if !is_workout {
+            continue;
+        }
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("workout")
+            .to_string();
+        entries.push(WorkoutEntry {
+            name,
+            path: path.to_string_lossy().into_owned(),
+        });
+    }
+
+    // Deterministic ordering keeps the cursor stable between redraws.
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries
+}

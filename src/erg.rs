@@ -112,8 +112,8 @@ impl Workout {
 
 /// Load an ERG workout from a .erg file.
 pub fn load_erg_workout(path: &Path) -> Result<Workout, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read ERG file: {e}"))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("Failed to read ERG file: {e}"))?;
 
     let mut targets = Vec::new();
     let mut current: Option<ErgTarget> = None;
@@ -188,8 +188,7 @@ pub fn load_erg_workout(path: &Path) -> Result<Workout, String> {
 /// fractional powers (e.g. 0.9 -> 0.9 * ftp). Absolute integer powers are
 /// taken as-is.
 pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
-    let file =
-        std::fs::File::open(path).map_err(|e| format!("Failed to open ZWO file: {e}"))?;
+    let file = std::fs::File::open(path).map_err(|e| format!("Failed to open ZWO file: {e}"))?;
     let source = std::io::BufReader::new(file);
     let parser = xml::reader::EventReader::new(source);
 
@@ -373,8 +372,14 @@ mod tests {
         let workout = parse_zwo_workout(&path, 300).unwrap();
         // warmup (1) + 3 intervals e/o (6) + cooldown (1) = 8 steps
         assert_eq!(workout.steps.len(), 8);
-        assert_eq!(workout.steps[0].target_power, (0.6f32 * 300.0).round() as u16);
-        assert_eq!(workout.steps[1].target_power, (0.9f32 * 300.0).round() as u16);
+        assert_eq!(
+            workout.steps[0].target_power,
+            (0.6f32 * 300.0).round() as u16
+        );
+        assert_eq!(
+            workout.steps[1].target_power,
+            (0.9f32 * 300.0).round() as u16
+        );
         assert_eq!(workout.name.as_deref(), Some("Test Workout"));
     }
 
