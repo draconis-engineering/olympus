@@ -741,7 +741,9 @@ impl App {
                     let profile = &mut self.userdata.profile;
                     settings.commit_edit(profile);
                     self.settings.dirty = true;
-                    self.save_profile();
+                    if let Err(e) = self.save_profile() {
+                        log::error!("failed to save profile: {e}");
+                    }
                     Action::Continue
                 }
                 KeyCode::Esc => {
