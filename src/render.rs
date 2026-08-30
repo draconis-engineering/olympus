@@ -8,12 +8,12 @@ use super::nav::{MainSelection, SettingsSelection};
 
 use chrono::Local;
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Flex, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Axis, Block, BorderType, Borders, Chart, Dataset, Gauge, GraphType, Paragraph,
+    Axis, Block, BorderType, Borders, Chart, Clear, Dataset, Gauge, GraphType, Paragraph,
 };
 use tui_big_text::{BigText, PixelSize};
 
@@ -51,6 +51,111 @@ fn line_chart<'a>(points: &'a [(f64, f64)], color: Color, max_y: f64) -> Chart<'
         .style(Style::default().fg(Color::DarkGray))
         .bounds([0.0, max_y]);
     Chart::new(vec![dataset]).x_axis(x_axis).y_axis(y_axis)
+}
+
+/// Center a box that is `percent_x` x `percent_y` (as a percentage of `area`)
+/// in the middle of the screen, for overlays/dialogs.
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let vert: [Rect; 3] = Layout::vertical([
+        Constraint::Percentage((100 - percent_y) / 2),
+        Constraint::Percentage(percent_y),
+        Constraint::Percentage((100 - percent_y) / 2),
+    ])
+    .flex(Flex::Center)
+    .areas(area);
+    let horiz: [Rect; 3] = Layout::horizontal([
+        Constraint::Percentage((100 - percent_x) / 2),
+        Constraint::Percentage(percent_x),
+        Constraint::Percentage((100 - percent_x) / 2),
+    ])
+    .flex(Flex::Center)
+    .areas(vert[1]);
+    horiz[1]
+}
+
+/// Draw the "loading workout" splash overlay over the whole screen.
+fn render_loading(frame: &mut Frame, area: Rect) {
+    let popup = centered_rect(46, 30, area);
+    frame.render_widget(Clear, popup);
+    let lines = vec![
+        Line::from(Span::styled(
+            " OLYMPUS ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Loading workout...",
+            Style::default().fg(Color::Gray),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Connecting trainer & setting ERG targets",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(""),
+        Line::from(Span::styled(
+            "█▒▒▒▒▒▒▒▒",
+            Style::default().fg(Color::Yellow),
+        ))
+        .alignment(Alignment::Center),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Cyan)),
+            )
+            .alignment(Alignment::Center),
+        popup,
+    );
+}
+
+/// Draw the "are you sure you want to quit?" confirmation dialog.
+fn render_confirm_quit(frame: &mut Frame, area: Rect) {
+    let popup = centered_rect(44, 26, area);
+    frame.render_widget(Clear, popup);
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "Are you sure you want to quit?",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Any unsaved ride data will be lost.",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[ Y ] Yes    [ N / Esc ] No",
+            Style::default().fg(Color::Cyan),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(""),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .title(" Quit ")
+                    .border_style(Style::default().fg(Color::Red)),
+            )
+            .alignment(Alignment::Center),
+        popup,
+    );
 }
 
 /// Footer rendering function
@@ -244,10 +349,10 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(pwrblock, pwrrect);
 
     let [pwr_header, pwr_main, pwr_graph, pwr_footer] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(4),
-        Constraint::Min(2),
-        Constraint::Length(2),
+        Constraint::Length(1), // header
+        Constraint::Fill(1),   // big number
+        Constraint::Length(3), // graph
+        Constraint::Length(2), // footer
     ])
     .areas(pwrinner);
 
@@ -325,6 +430,21 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             Span::raw("    "),
             Span::styled("5m ", Style::default().fg(Color::DarkGray)),
             Span::raw(format!("{}W", livedata.avg_5min_pwr)),
+            Span::raw("    "),
+            Span::styled("3m ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}W", livedata.avg_3min_pwr)),
+            Span::raw("    "),
+            Span::styled("1m ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}W", livedata.avg_1min_pwr)),
+            Span::raw("    "),
+            Span::styled("30s ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}W", livedata.avg_30sec_pwr)),
+            Span::raw("    "),
+            Span::styled("10s ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}W", livedata.avg_10sec_pwr)),
+            Span::raw("    "),
+            Span::styled("3s ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}W", livedata.avg_3sec_pwr)),
         ]),
     ];
 
@@ -352,9 +472,9 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(hrblock, hrrect);
 
     let [hr_top, hr_graph, hr_bottom] = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(2),
-        Constraint::Length(1),
+        Constraint::Fill(1),   // big number (flexible)
+        Constraint::Length(3), // graph (reserved rows, can't overlap the number)
+        Constraint::Length(1), // zone/avg footer
     ])
     .areas(hrinner);
 
@@ -394,6 +514,9 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             Span::raw("    "),
             Span::styled("AVG ", Style::default().fg(Color::DarkGray)),
             Span::raw(format!("{}", livedata.avg_hr)),
+            Span::raw("    "),
+            Span::styled("TRGT ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}", livedata.target_hrz)),
         ]))
         .alignment(Alignment::Center),
         hr_bottom,
@@ -444,10 +567,14 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
+            Span::styled("MAX ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}", livedata.max_rpm)),
+            Span::raw("    "),
             Span::styled("AVG ", Style::default().fg(Color::DarkGray)),
             Span::raw(format!("{}", livedata.avg_rpm)),
-            Span::styled("  MAX ", Style::default().fg(Color::DarkGray)),
-            Span::raw(format!("{}", livedata.max_rpm)),
+            Span::raw("    "),
+            Span::styled("TRGT ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}", livedata.target_rpm)),
         ]))
         .alignment(Alignment::Center),
         rpm_footer,
@@ -1147,4 +1274,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Screen::Settings => settings_draw(frame, main_area, app),
         Screen::Stats => stats_draw(frame, main_area, app),
     };
+
+    // Overlays (rendered on top of everything).
+    let full = frame.area();
+    if app.is_loading() {
+        render_loading(frame, full);
+    } else if app.confirm_quit {
+        render_confirm_quit(frame, full);
+    }
 }

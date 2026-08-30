@@ -12,6 +12,7 @@ use ratatui::{
     style::{Color, Style},
     text::Span,
 };
+use std::time::{Duration, Instant};
 use std::u16;
 
 // Live data from device
@@ -21,6 +22,11 @@ pub struct LiveData {
     pub avg_20min_pwr: u16,
     pub avg_10min_pwr: u16,
     pub avg_5min_pwr: u16,
+    pub avg_3min_pwr: u16,
+    pub avg_1min_pwr: u16,
+    pub avg_30sec_pwr: u16,
+    pub avg_10sec_pwr: u16,
+    pub avg_3sec_pwr: u16,
     pub avg_pwr: u16,
     pub max_pwr: u16,
     pub target_pwr: u16,
@@ -39,7 +45,6 @@ pub struct LiveData {
     pub crnt_vel: f32,
     pub max_vel: f32,
     pub avg_vel: f32,
-    pub target_vel: f32,
     // Gradient/Elevation
     pub grad: f32,
     pub alti: f32,
@@ -65,6 +70,11 @@ impl LiveData {
             avg_20min_pwr: 0,
             avg_10min_pwr: 0,
             avg_5min_pwr: 0,
+            avg_3min_pwr: 0,
+            avg_1min_pwr: 0,
+            avg_30sec_pwr: 0,
+            avg_10sec_pwr: 0,
+            avg_3sec_pwr: 0,
             avg_pwr: 0,
             max_pwr: 0,
             target_pwr: 0,
@@ -83,7 +93,6 @@ impl LiveData {
             crnt_vel: 0.0,
             avg_vel: 0.0,
             max_vel: 0.0,
-            target_vel: 0.0,
             // Gradient/Elevation
             grad: 0.0,
             alti: 0.0,
@@ -147,7 +156,7 @@ impl UserData {
     }
 }
 
-#[derive(Default, PartialEq, Clone, Copy)]
+#[derive(Default, PartialEq, Clone, Copy, Debug)]
 pub enum Screen {
     #[default]
     Main,
@@ -157,7 +166,7 @@ pub enum Screen {
     Stats,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Action {
     Continue,
     Quit,
@@ -220,7 +229,7 @@ impl DatabaseState {
     pub fn selected_workout(&self) -> Option<&crate::data::WorkoutEntry> {
         self.workouts.get(self.selected)
     }
-    pub fn selected_session(&self) -> Option<&crate::data::StoredSession> {
+    pub fn _selected_session(&self) -> Option<&crate::data::StoredSession> {
         self.sessions.get(self.selected)
     }
     fn ensure_selected_in_range(&mut self) {
@@ -350,6 +359,11 @@ pub struct App {
     pub database: DatabaseState,
     /// Settings screen state.
     pub settings: SettingsState,
+    /// Whether a quit confirmation dialog is currently visible.
+    pub confirm_quit: bool,
+    /// Set when a workout has been started; the loading overlay shows until
+    /// the timer elapses, then we drop into the Control panel.
+    pub loading: Option<Instant>,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData) -> Self {
@@ -365,6 +379,22 @@ impl App {
             workout: None,
             database: DatabaseState::default(),
             settings: SettingsState::default(),
+            confirm_quit: false,
+            loading: None,
+        }
+    }
+    /// True while the workout loading overlay should be shown.
+    pub fn is_loading(&self) -> bool {
+        self.loading
+            .map_or(false, |t| t.elapsed() < Duration::from_millis(1500))
+    }
+
+    /// Called each frame; once the loading timer elapses, move into the
+    /// Control panel and clear the overlay.
+    pub fn poll_loading(&mut self) {
+        if self.loading.is_some() && !self.is_loading() {
+            self.loading = None;
+            self.screen = Screen::Control;
         }
     }
     pub fn screen(&self) -> Screen {
@@ -397,7 +427,7 @@ impl App {
     }
 
     /// Mutable access to the rider profile (used by the Settings editor).
-    pub fn profile_mut(&mut self) -> &mut UserProfile {
+    pub fn _profile_mut(&mut self) -> &mut UserProfile {
         &mut self.userdata.profile
     }
 
@@ -413,7 +443,7 @@ impl App {
     }
 
     /// Capacity of the rolling power history buffer (samples).
-    pub const fn power_history_capacity(&self) -> usize {
+    pub const fn _power_history_capacity(&self) -> usize {
         POWER_HISTORY_CAPACITY
     }
 
@@ -603,6 +633,9 @@ impl App {
         match workout {
             Some(w) => {
                 self.set_workout(Some(w));
+                // Show the loading overlay, then drop into Control after it
+                // elapses (see `poll_loading`).
+                self.loading = Some(Instant::now());
                 true
             }
             None => false,
@@ -640,7 +673,10 @@ impl App {
                         self.screen = Screen::Stats;
                         Action::Continue
                     }
-                    MainSelection::Quit => Action::Quit,
+                    MainSelection::Quit => {
+                        self.confirm_quit = true;
+                        Action::Continue
+                    }
                 },
                 _ => Action::Continue,
             },
@@ -674,10 +710,9 @@ impl App {
             }
             KeyCode::Enter => match self.database.tab {
                 DatabaseTab::Workouts => {
-                    // Load the highlighted workout and jump to the Control panel.
-                    if self.start_selected_workout() {
-                        self.screen = Screen::Control;
-                    }
+                    // Start the highlighted workout: the loading overlay shows,
+                    // then `poll_loading` moves us into the Control panel.
+                    self.start_selected_workout();
                     Action::Continue
                 }
                 DatabaseTab::Sessions => Action::Continue,
@@ -785,6 +820,19 @@ impl App {
     }
 
     pub fn handle_key_press(&mut self, key_code: KeyCode) -> Action {
+        // If a quit confirmation is showing, only the confirm/cancel keys
+        // are honored; everything else is ignored until it's dismissed.
+        if self.confirm_quit {
+            return match key_code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => Action::Quit,
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.confirm_quit = false;
+                    Action::Continue
+                }
+                _ => Action::Continue,
+            };
+        }
+
         // Global screen shortcuts.
         match key_code {
             KeyCode::Char('m') | KeyCode::Char('M') => {
@@ -955,5 +1003,72 @@ mod tests {
     #[test]
     fn stats_screen_renders() {
         smoke_render(Screen::Stats, 80, 24);
+    }
+
+    #[test]
+    fn quit_confirmation_flow() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        // Drive the Main menu down to "Quit" and press Enter.
+        for _ in 0..5 {
+            app.handle_key_press(KeyCode::Down);
+        }
+        assert_eq!(app.handle_key_press(KeyCode::Enter), Action::Continue);
+        assert!(app.confirm_quit);
+
+        // 'y' confirms and returns Quit.
+        assert_eq!(app.handle_key_press(KeyCode::Char('y')), Action::Quit);
+
+        // 'n' / Esc dismiss and do NOT quit.
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        for _ in 0..5 {
+            app.handle_key_press(KeyCode::Down);
+        }
+        app.handle_key_press(KeyCode::Enter);
+        assert_eq!(app.handle_key_press(KeyCode::Char('n')), Action::Continue);
+        assert!(!app.confirm_quit);
+    }
+
+    #[test]
+    fn loading_transitions_to_control_after_timeout() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.loading = Some(Instant::now() - Duration::from_secs(3)); // already expired
+        assert!(!app.is_loading());
+        app.poll_loading();
+        assert!(app.loading.is_none());
+        assert_eq!(app.screen, Screen::Control);
+    }
+
+    #[test]
+    fn loading_is_active_when_recent() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.loading = Some(Instant::now());
+        assert!(app.is_loading());
+    }
+
+    #[test]
+    fn loading_overlay_renders() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.screen = Screen::Database;
+        app.loading = Some(Instant::now());
+
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| crate::render::draw(frame, &app))
+            .expect("loading overlay should render");
+    }
+
+    #[test]
+    fn confirm_quit_overlay_renders() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.confirm_quit = true;
+
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| crate::render::draw(frame, &app))
+            .expect("confirm quit overlay should render");
     }
 }

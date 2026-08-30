@@ -112,6 +112,8 @@ async fn main() -> io::Result<()> {
 
     loop {
         let frame_start = Instant::now();
+        // Move from the loading overlay into the Control panel once it elapses.
+        app.poll_loading();
         terminal.draw(|frame| draw(frame, &app))?;
 
         // Drain any state changes from the driver.

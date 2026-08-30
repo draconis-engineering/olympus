@@ -26,7 +26,7 @@ const PM_UUID: Uuid = uuid_from_u16(0x2A63); // Cycling Power Measurement
 const HRM_UUID: Uuid = uuid_from_u16(0x2A37); // Heart Rate Measurement
 const FMS_UUID: Uuid = uuid_from_u16(0x1826); // Fitness Machine Service
 const FMCP_UUID: Uuid = uuid_from_u16(0x2AD9); // Fitness Machine Control Point
-const CSC_UUID: Uuid = uuid_from_u16(0x1816); // Cycling Speed & Cadence
+const _CSC_UUID: Uuid = uuid_from_u16(0x1816); // Cycling Speed & Cadence
 const CSC_MEASUREMENT_UUID: Uuid = uuid_from_u16(0x2A5B); // CSC Measurement
 
 /// A single telemetry sample emitted from the BLE driver.
@@ -53,8 +53,8 @@ pub enum BleCommand {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BleState {
     Idle,
-    Scanning,
-    Connecting,
+    _Scanning,
+    _Connecting,
     Connected { name: String },
     Error(String),
 }
@@ -89,7 +89,7 @@ pub fn start_driver() -> BleDriver {
     }
 }
 
-/// The core async BLE event loop.
+/// Core async BLE event loop.
 async fn driver_loop(
     tel_tx: Sender<Telemetry>,
     mut cmd_rx: Receiver<BleCommand>,

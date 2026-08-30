@@ -201,12 +201,14 @@ pub struct StoredSession {
 
 /// Load the most recent stored sessions (newest first).
 pub fn list_sessions(conn: &Connection, limit: usize) -> rusqlite::Result<Vec<StoredSession>> {
+    // Prepare the SQL statement to select the most recent sessions.
     let mut stmt = conn.prepare(
         "SELECT id, filename, total_distance, total_calories, avg_speed, max_speed, \
          max_heart_rate, avg_heart_rate, max_power, avg_power, recorded_at \
          FROM fit_sessions ORDER BY id DESC LIMIT ?1",
     )?;
 
+    // Extract rows into StoredSession structs.
     let rows = stmt.query_map([limit as i64], |row| {
         Ok(StoredSession {
             id: row.get(0)?,

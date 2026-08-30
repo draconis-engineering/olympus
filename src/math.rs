@@ -8,7 +8,7 @@ use ratatui::prelude::Color;
 // -- HR MODELS -- //
 // == == = = == == //
 
-// Olympiatoppen's Model | Get color from HR zone
+/// Olympiatoppen's Model | Get color from HR zone
 pub fn olt_hr_model(hr: u16, maxhr: u16) -> u16 {
     let percent = (hr as f32 / maxhr as f32) * 100.0;
     let rounded_percent = percent.round() as u16;
@@ -28,7 +28,7 @@ pub fn olt_hr_model(hr: u16, maxhr: u16) -> u16 {
 // -- POWER MODELS -- //
 // == == = == = == == //
 
-// Coggans Model | Convert power + lactate threshold power to zone
+/// Coggans Model | Convert power + lactate threshold power to zone
 pub fn coggan_pwr_model(pwr: u16, ltpwr: u16) -> u16 {
     // Color, Zone, Zone description
     let ltpwr_percentage = (pwr as f32 / ltpwr as f32) * 100.0;
@@ -54,9 +54,9 @@ pub fn zone2color(zone: u16) -> Color {
         2 => Color::Blue,
         3 => Color::Green,
         4 => Color::Yellow,
-        5 => Color::Rgb(255, 128, 0),
+        5 => Color::Rgb(255, 128, 0), // Orange
         6 => Color::Red,
-        7 => Color::Rgb(255, 192, 203),
+        7 => Color::Rgb(255, 192, 203), // Pink
         _ => Color::White,
     }
 }
@@ -104,9 +104,11 @@ pub fn normalized_power(raw: &[u64], sample_rate_hz: f64) -> f64 {
         return 0.0;
     }
 
+    // Window size in bins (30 seconds)
     let window_bins = (30.0 * sample_rate_hz).round() as usize;
     let n = raw.len();
 
+    // Compute rolling average of raw power over the last 30 seconds
     let start = if n > window_bins { n - window_bins } else { 0 };
     let seg = &raw[start..];
     let mean: f64 = seg.iter().map(|&v| v as f64).sum::<f64>() / seg.len() as f64;
