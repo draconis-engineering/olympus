@@ -15,6 +15,7 @@ use btleplug::api::{
 use btleplug::platform::{Manager, Peripheral};
 use futures::StreamExt;
 use rand::{Rng, SeedableRng};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::time;
@@ -28,6 +29,54 @@ const FMS_UUID: Uuid = uuid_from_u16(0x1826); // Fitness Machine Service
 const FMCP_UUID: Uuid = uuid_from_u16(0x2AD9); // Fitness Machine Control Point
 const _CSC_UUID: Uuid = uuid_from_u16(0x1816); // Cycling Speed & Cadence
 const CSC_MEASUREMENT_UUID: Uuid = uuid_from_u16(0x2A5B); // CSC Measurement
+
+/// Tracks cumulative crank revolutions + last event time across notifications
+/// so cadence (rpm) can be derived from the delta between two samples, using
+/// the GATT convention of 1/1024 s per crank-event time unit.
+///
+/// Both the Cycling Power Measurement and CSC Measurement profiles report a
+/// cumulative crank revolution count and a "last crank event time". Cadence:
+///     rpm = (Δrevs * 1024 * 60) / Δevent_time
+struct CrankTracker {
+    revs: AtomicU32,
+    event_time: AtomicU16,
+    initialized: AtomicBool,
+}
+
+impl CrankTracker {
+    fn new() -> Self {
+        Self {
+            revs: AtomicU32::new(0),
+            event_time: AtomicU16::new(0),
+            initialized: AtomicBool::new(false),
+        }
+    }
+
+    /// Feed a new (revs, event_time) sample; returns the derived cadence in
+    /// rpm, or `None` until a second sample is available (or on a bogus delta).
+    fn cadence(&self, revs: u32, event_time: u16) -> Option<u16> {
+        let prev_revs = self.revs.load(Ordering::Relaxed) as u32;
+        let prev_time = self.event_time.load(Ordering::Relaxed);
+        let init = self.initialized.load(Ordering::Relaxed);
+
+        self.revs.store(revs, Ordering::Relaxed);
+        self.event_time.store(event_time, Ordering::Relaxed);
+        self.initialized.store(true, Ordering::Relaxed);
+
+        if !init {
+            return None;
+        }
+        // Handle 16-bit event-time wraparound.
+        let dt = event_time.wrapping_sub(prev_time) as u16 as u32;
+        // Revolutions may wrap the counter; handle using i32 subtraction.
+        let drevs = revs.wrapping_sub(prev_revs) as i32;
+        if drevs < 0 || dt == 0 {
+            return None;
+        }
+        let rpm = (drevs as u32 * 1024 * 60) / dt;
+        Some(rpm.min(250) as u16)
+    }
+}
 
 /// A single telemetry sample emitted from the BLE driver.
 #[derive(Debug, Clone, PartialEq)]
@@ -53,13 +102,15 @@ pub enum BleCommand {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BleState {
     Idle,
-    _Scanning,
-    _Connecting,
+    Scanning,
+    Connecting,
     Connected { name: String },
+    Simulated,
     Error(String),
 }
 
 /// Result of running the BLE driver: a task handle plus channels.
+#[allow(dead_code)]
 pub struct BleDriver {
     /// Handle to the spawned async task that owns the BLE stack.
     pub task: tokio::task::JoinHandle<()>,
@@ -104,16 +155,17 @@ async fn driver_loop(
     // Attempt to grab an adapter. If none exists we retry periodically rather
     // than crash, which keeps the driver resilient to Bluetooth not being up yet.
     let mut peripheral = loop {
+        state_send(BleState::Scanning);
         match find_trainer().await {
             Ok(Some(p)) => {
+                state_send(BleState::Connecting);
                 break p;
             }
             Ok(None) => {
-                // No device found — either use simulated data or keep scanning.
-                // If the user selects a target power over the command channel we
-                // still accept it (the UI stays live).
+                // No device found — show simulated data so the UI stays live,
+                // then try scanning again.
+                state_send(BleState::Simulated);
                 emit_simulated(&tel_tx, &mut cmd_rx).await;
-                // After simulating a few samples, try scanning again.
                 time::sleep(Duration::from_secs(1)).await;
             }
             Err(e) => {
@@ -132,16 +184,14 @@ async fn driver_loop(
         }
     };
 
-    state_send(BleState::Connected {
-        name: peripheral
-            .properties()
-            .await
-            .map(|p| {
-                p.and_then(|pp| pp.local_name)
-                    .unwrap_or_else(|| "Trainer".to_string())
-            })
-            .unwrap_or_else(|_| "Trainer".to_string()),
-    });
+    let initial_name = peripheral
+        .properties()
+        .await
+        .ok()
+        .flatten()
+        .and_then(|p| p.local_name)
+        .unwrap_or_else(|| "Trainer".to_string());
+    state_send(BleState::Connected { name: initial_name });
 
     // Discover services and subscribe to the characteristics we need.
     let subscriptions = match peripheral.discover_services().await {
@@ -160,14 +210,17 @@ async fn driver_loop(
         }
     };
 
+    // Shared crank state so cadence can be derived across notifications.
+    let crank = CrankTracker::new();
+
     loop {
         tokio::select! {
             // Incoming data notifications from the trainer.
             maybe = notifications.next() => {
                 match maybe {
-                    Some(n) => handle_notification(&n, &tel_tx).await,
+                    Some(n) => handle_notification(&n, &tel_tx, &crank).await,
                     None => {
-                        state_send(BleState::Error("notification stream ended".into()));
+                        state_send(BleState::Idle);
                         break;
                     }
                 }
@@ -187,6 +240,7 @@ async fn driver_loop(
                     }
                     Some(BleCommand::Scan) => {
                         let _ = peripheral.disconnect().await;
+                        state_send(BleState::Idle);
                         break;
                     }
                     None => break,
@@ -194,13 +248,14 @@ async fn driver_loop(
             }
             // Heartbeat so we can report a healthy "connected" state periodically.
             _ = time::sleep(Duration::from_secs(5)) => {
-                state_send(BleState::Connected {
-                    name: peripheral.properties().await
-                        .ok()
-                        .flatten()
-                        .and_then(|p| p.local_name)
-                        .unwrap_or_else(|| "Trainer".into()),
-                });
+                let hb_name = peripheral
+                    .properties()
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|p| p.local_name)
+                    .unwrap_or_else(|| "Trainer".into());
+                state_send(BleState::Connected { name: hb_name });
             }
         }
     }
@@ -320,7 +375,11 @@ async fn subscribe_all(
 }
 
 /// Parse a single notification and forward the parsed values to the UI.
-async fn handle_notification(n: &ValueNotification, tel_tx: &Sender<Telemetry>) {
+async fn handle_notification(
+    n: &ValueNotification,
+    tel_tx: &Sender<Telemetry>,
+    crank: &CrankTracker,
+) {
     let mut t = Telemetry {
         power: None,
         cadence: None,
@@ -329,27 +388,26 @@ async fn handle_notification(n: &ValueNotification, tel_tx: &Sender<Telemetry>) 
     };
 
     if n.uuid == PM_UUID {
-        // CP Measurement flags: byte 0 low 5 bits are the pedal-power bit etc.
-        // Format (LE): flags u16, then fields depending on flags.
+        // Cycling Power Measurement (0x2A63):
+        //   Flags u16 (LE), then Instantaneous Power u16 (always present),
+        //   then optional fields gated by flag bits:
+        //     bit4 (0x0010): wheel revs u32 + last wheel time u16
+        //     bit5 (0x0020): crank revs u16 + last crank time u16
         let b = &n.value;
-        if b.len() >= 2 {
+        if b.len() >= 4 {
             let flags = u16::from_le_bytes([b[0], b[1]]);
-            let is_wheel_data = flags & 0x0004 != 0;
-            let offset = 2;
-            if is_wheel_data {
-                // wheel revolutions + wheel time (not power in this case)
-                // Power only present when NOT crank data. When wheel data it
-                // may still carry Power if the "power present" bit is set.
-            } else {
-                // crank revolutions & crank time
-                if b.len() >= offset + 4 {
-                    // Standard CP: first field after flags is Power (u16) when
-                    // the "power present" bit is set.
-                    if (flags & 0x0002) != 0 && b.len() >= offset + 2 {
-                        let pwr = u16::from_le_bytes([b[offset], b[offset + 1]]);
-                        t.power = Some(pwr);
-                    }
-                }
+            let power = u16::from_le_bytes([b[2], b[3]]);
+            t.power = Some(power);
+
+            let mut offset = 4;
+            if flags & 0x0010 != 0 {
+                offset += 6; // wheel revs (u32) + last wheel time (u16)
+            }
+            if flags & 0x0020 != 0 && b.len() >= offset + 4 {
+                let revs =
+                    u32::from_le_bytes([b[offset], b[offset + 1], b[offset + 2], b[offset + 3]]);
+                let event_time = u16::from_le_bytes([b[offset + 4], b[offset + 5]]);
+                t.cadence = crank.cadence(revs, event_time);
             }
         }
     } else if n.uuid == HRM_UUID {
@@ -390,19 +448,13 @@ async fn handle_notification(n: &ValueNotification, tel_tx: &Sender<Telemetry>) 
             idx += 6; // skip wheel fields (u32 + u16)
         }
         if flags & 0x02 != 0 && b.len() >= idx + 4 {
-            // crank revs u16 and event time u16 — the cadence (rpm) computed
-            // from the difference requires tracking previous sample. For a raw
-            // instantaneous approximation we can derive from the revolution
-            // delta once we have two samples. To keep it simpler here, we store
-            // crank revs and UI math will compute cadence using the timestamp.
-            let _revs = u16::from_le_bytes([b[idx], b[idx + 1]]);
-            let _event_time = u16::from_le_bytes([b[idx + 2], b[idx + 3]]);
-            // We don't parse cadence here (requires state); handled in app layer.
+            let revs = u32::from_le_bytes([b[idx], b[idx + 1], 0, 0]);
+            let event_time = u16::from_le_bytes([b[idx + 2], b[idx + 3]]);
+            t.cadence = crank.cadence(revs, event_time);
         }
     } else if n.uuid == FMCP_UUID {
         // Control point responses — primarily for ERG confirmation.
         // Response codes: 0x80 = success, 0x82 = opcode not supported, etc.
-        // We log but don't currently surface in UI.
         return;
     }
 

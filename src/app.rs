@@ -8,11 +8,6 @@ use super::math;
 use super::nav::{MainSelection, Selections};
 
 use crossterm::event::KeyCode;
-use ratatui::{
-    style::{Color, Style},
-    text::Span,
-};
-use std::time::{Duration, Instant};
 use std::u16;
 
 // Live data from device
@@ -170,6 +165,54 @@ pub enum Screen {
 pub enum Action {
     Continue,
     Quit,
+}
+
+/// Lifecycle state of the current ride session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RideState {
+    /// No ride in progress (Main / Database screens).
+    #[default]
+    Idle,
+    /// Ride is live on the Control panel.
+    Running,
+    /// Ride is live but the clock / recording are frozen.
+    Paused,
+    /// The end-of-ride summary dialog is open.
+    Summary,
+}
+
+/// Connection status of the BLE trainer, surfaced to the System panel and the
+/// workout loading overlay.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BleUiState {
+    /// Driver hasn't reported yet.
+    Idle,
+    Scanning,
+    Connecting,
+    Connected,
+    /// No trainer found; showing simulated data.
+    Simulated,
+    Error(String),
+}
+
+impl Default for BleUiState {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+impl BleUiState {
+    /// A short screen-readable label for the state.
+    pub fn label(&self) -> &str {
+        match self {
+            BleUiState::Idle => "IDLE",
+            BleUiState::Scanning => "SCANNING",
+            BleUiState::Connecting => "CONNECTING",
+            BleUiState::Connected => "CONNECTED",
+            BleUiState::Simulated => "SIMULATED",
+            BleUiState::Error(_) => "ERROR",
+        }
+    }
 }
 
 /// Capacity (in samples) of the rolling power, heart rate, and cadence history buffers.
@@ -361,9 +404,20 @@ pub struct App {
     pub settings: SettingsState,
     /// Whether a quit confirmation dialog is currently visible.
     pub confirm_quit: bool,
-    /// Set when a workout has been started; the loading overlay shows until
-    /// the timer elapses, then we drop into the Control panel.
-    pub loading: Option<Instant>,
+    /// Lifecycle state of the current ride session.
+    pub ride: RideState,
+    /// Latest BLE trainer connection status (updated from the driver each frame).
+    pub ble: BleUiState,
+    /// Display name of the connected trainer (empty when none).
+    pub trainer_name: String,
+    /// Set by the end-of-ride dialog so the main loop knows to persist or
+    /// discard the recording. `Some(true)` = save, `Some(false)` = discard.
+    pub pending_save: Option<bool>,
+    /// Number of seconds the ride spent paused (excluded from ride time).
+    pub paused_seconds: u32,
+    /// Name of the workout that produced the just-finished ride (for the
+    /// saved-file banner).
+    pub last_workout_name: Option<String>,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData) -> Self {
@@ -380,21 +434,12 @@ impl App {
             database: DatabaseState::default(),
             settings: SettingsState::default(),
             confirm_quit: false,
-            loading: None,
-        }
-    }
-    /// True while the workout loading overlay should be shown.
-    pub fn is_loading(&self) -> bool {
-        self.loading
-            .map_or(false, |t| t.elapsed() < Duration::from_millis(1500))
-    }
-
-    /// Called each frame; once the loading timer elapses, move into the
-    /// Control panel and clear the overlay.
-    pub fn poll_loading(&mut self) {
-        if self.loading.is_some() && !self.is_loading() {
-            self.loading = None;
-            self.screen = Screen::Control;
+            ride: RideState::Idle,
+            ble: BleUiState::Idle,
+            trainer_name: String::new(),
+            pending_save: None,
+            paused_seconds: 0,
+            last_workout_name: None,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -435,12 +480,95 @@ impl App {
     pub fn save_profile(&self) -> Result<(), String> {
         crate::data::save_profile(&self.userdata.profile)
     }
-    pub fn connection(&self) -> Vec<Span<'_>> {
-        vec![
-            Span::from("Tacx Flux S2"),
-            Span::from("CONNECTED").style(Style::default().fg(Color::Green)),
-        ]
+    /// A short, style-appropriate Bluetooth status line: trainer name (or a
+    /// placeholder) plus the current connection-state label.
+    pub fn connection(&self) -> (String, BleUiState) {
+        let name = if self.trainer_name.is_empty() {
+            "No trainer".to_string()
+        } else {
+            self.trainer_name.clone()
+        };
+        (name, self.ble.clone())
     }
+
+    // ---------------------------------------------------------------------
+    // Ride session engine
+    // ---------------------------------------------------------------------
+
+    /// True when the ride clock and recording should advance (i.e. a ride is
+    /// loaded and it isn't paused or showing the summary dialog).
+    pub fn is_recording(&self) -> bool {
+        self.screen == Screen::Control && self.ride == RideState::Running
+    }
+
+    /// Whether the ride has begun at all (running or paused).
+    pub fn in_ride(&self) -> bool {
+        matches!(self.ride, RideState::Running | RideState::Paused | RideState::Summary)
+    }
+
+    /// Reset all ride metrics and histories for a brand-new session.
+    pub fn reset_ride(&mut self) {
+        self.livedata = LiveData::new();
+        self.power_history.clear();
+        self.hr_history.clear();
+        self.rpm_history.clear();
+        self.vel_history.clear();
+        self.paused_seconds = 0;
+        self.pending_save = None;
+    }
+
+    /// Move to the Control panel, starting a fresh ride if none is active.
+    pub fn start_ride(&mut self, fresh: bool) {
+        if fresh {
+            self.reset_ride();
+        }
+        self.ride = RideState::Running;
+        self.screen = Screen::Control;
+    }
+
+    /// Toggle pause / resume on the Control panel.
+    pub fn toggle_pause(&mut self) {
+        match self.ride {
+            RideState::Running => self.ride = RideState::Paused,
+            RideState::Paused => self.ride = RideState::Running,
+            _ => {}
+        }
+    }
+
+    /// Open the end-of-ride summary dialog.
+    pub fn open_summary(&mut self) {
+        if matches!(self.ride, RideState::Running | RideState::Paused) {
+            self.ride = RideState::Summary;
+        }
+    }
+
+    /// Close the summary dialog and return to the ride (resume).
+    pub fn resume_from_summary(&mut self) {
+        if self.ride == RideState::Summary {
+            self.ride = RideState::Running;
+        }
+    }
+
+    /// Save or discard the ride, returning to the Main menu. The main loop
+    /// drains `pending_save` to persist the FIT file + samples.
+    pub fn finish_ride(&mut self, save: bool, workout_name: Option<String>) {
+        self.pending_save = Some(save);
+        self.ride = RideState::Idle;
+        self.screen = Screen::Main;
+        if save {
+            self.last_workout_name = workout_name;
+        }
+    }
+
+    /// True while the workout loading overlay should be shown. In the real
+    /// engine this is only true between loading a workout and being ready, so
+    /// here it just reflects "a ride is being started and hasn't shown yet".
+    pub fn is_loading(&self) -> bool {
+        false
+    }
+
+    /// Called each frame by the main loop; retained for compatibility.
+    pub fn poll_loading(&mut self) {}
 
     /// Capacity of the rolling power history buffer (samples).
     pub const fn _power_history_capacity(&self) -> usize {
@@ -576,8 +704,13 @@ impl App {
     }
 
     /// Advances the elapsed ride clock by one second and, if a workout is
-    /// active, resolves the new target power for the current interval.
+    /// active, resolves the new target power for the current interval. When
+    /// the ride is paused (or the summary is showing) the clock is frozen.
     pub fn tick_second(&mut self) -> u16 {
+        if !self.is_recording() {
+            return self.livedata.target_pwr;
+        }
+
         self.livedata.elapsed_secs += 1;
         let target = match &self.workout {
             Some(w) => w
@@ -596,8 +729,12 @@ impl App {
         target
     }
 
-    /// Integrates current speed into the accumulated distance (km).
+    /// Integrates current speed into the accumulated distance (km). No-op when
+    /// the ride clock is frozen, so a pause doesn't accrue distance.
     pub fn accumulate_distance(&mut self, dt_s: f64) {
+        if !self.is_recording() {
+            return;
+        }
         self.livedata.elapsed_distance +=
             math::distance_km(self.livedata.crnt_vel as f64, dt_s) as f32;
     }
@@ -633,9 +770,8 @@ impl App {
         match workout {
             Some(w) => {
                 self.set_workout(Some(w));
-                // Show the loading overlay, then drop into Control after it
-                // elapses (see `poll_loading`).
-                self.loading = Some(Instant::now());
+                self.reset_ride();
+                self.start_ride(false);
                 true
             }
             None => false,
@@ -655,9 +791,19 @@ impl App {
             }
             KeyCode::Enter => match self.screen {
                 Screen::Main => match *self.selections().main() {
-                    MainSelection::NewRide => Action::Continue,
+                    MainSelection::NewRide => {
+                        self.start_ride(true);
+                        Action::Continue
+                    }
                     MainSelection::Control => {
-                        self.screen = Screen::Control;
+                        // Navigate to the live panel; start a fresh ride if
+                        // none is already in progress.
+                        if !self.in_ride() {
+                            self.start_ride(true);
+                        } else {
+                            self.screen = Screen::Control;
+                            self.ride = RideState::Running;
+                        }
                         Action::Continue
                     }
                     MainSelection::Workouts => {
@@ -819,6 +965,46 @@ impl App {
         }
     }
 
+    /// Key handling for the Control panel while a ride is in progress:
+    /// Space toggles pause/resume, `q` opens the end-of-ride summary.
+    fn handle_control_key(&mut self, key_code: KeyCode) -> Action {
+        match key_code {
+            KeyCode::Char(' ') | KeyCode::Enter => {
+                self.toggle_pause();
+                Action::Continue
+            }
+            KeyCode::Char('q') | KeyCode::Char('Q') => {
+                self.open_summary();
+                Action::Continue
+            }
+            _ => Action::Continue,
+        }
+    }
+
+    /// Key handling while the end-of-ride summary dialog is showing.
+    fn handle_summary_key(&mut self, key_code: KeyCode) -> Action {
+        match key_code {
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let workout_name = self
+                    .workout
+                    .as_ref()
+                    .and_then(|w| w.name.clone())
+                    .or_else(|| self.last_workout_name.clone());
+                self.finish_ride(true, workout_name);
+                Action::Continue
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Char('n') | KeyCode::Char('N') => {
+                self.finish_ride(false, None);
+                Action::Continue
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') | KeyCode::Esc => {
+                self.resume_from_summary();
+                Action::Continue
+            }
+            _ => Action::Continue,
+        }
+    }
+
     pub fn handle_key_press(&mut self, key_code: KeyCode) -> Action {
         // If a quit confirmation is showing, only the confirm/cancel keys
         // are honored; everything else is ignored until it's dismissed.
@@ -833,6 +1019,11 @@ impl App {
             };
         }
 
+        // The end-of-ride summary dialog grabs focus while it's open.
+        if self.ride == RideState::Summary {
+            return self.handle_summary_key(key_code);
+        }
+
         // Global screen shortcuts.
         match key_code {
             KeyCode::Char('m') | KeyCode::Char('M') => {
@@ -840,7 +1031,12 @@ impl App {
                 return Action::Continue;
             }
             KeyCode::Char('c') | KeyCode::Char('C') => {
-                self.screen = Screen::Control;
+                // Navigate to the live panel; start a fresh ride if none active.
+                if !self.in_ride() {
+                    self.start_ride(true);
+                } else {
+                    self.screen = Screen::Control;
+                }
                 return Action::Continue;
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
@@ -858,6 +1054,7 @@ impl App {
         match self.screen {
             Screen::Settings => self.handle_settings_key(key_code),
             Screen::Database => self.handle_database_key(key_code),
+            Screen::Control => self.handle_control_key(key_code),
             _ => self.handle_nav_key(key_code),
         }
     }
@@ -1029,34 +1226,109 @@ mod tests {
     }
 
     #[test]
-    fn loading_transitions_to_control_after_timeout() {
+    fn new_ride_from_main_starts_on_control() {
         let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
-        app.loading = Some(Instant::now() - Duration::from_secs(3)); // already expired
-        assert!(!app.is_loading());
-        app.poll_loading();
-        assert!(app.loading.is_none());
+        // Select "New Ride" (index 0) and press Enter.
+        app.handle_key_press(KeyCode::Enter);
+        assert_eq!(app.ride, RideState::Running);
         assert_eq!(app.screen, Screen::Control);
+        assert!(app.is_recording());
     }
 
     #[test]
-    fn loading_is_active_when_recent() {
+    fn pause_freezes_ride_and_resume_restarts() {
         let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
-        app.loading = Some(Instant::now());
-        assert!(app.is_loading());
+        app.handle_key_press(KeyCode::Enter); // start ride
+        assert!(app.is_recording());
+
+        // Pause via space.
+        app.handle_key_press(KeyCode::Char(' '));
+        assert_eq!(app.ride, RideState::Paused);
+        assert!(!app.is_recording());
+
+        // The clock must not advance while paused.
+        let before = app.livedata.elapsed_secs;
+        app.tick_second();
+        assert_eq!(app.livedata.elapsed_secs, before);
+
+        // Resume via space.
+        app.handle_key_press(KeyCode::Char(' '));
+        assert_eq!(app.ride, RideState::Running);
+        assert!(app.is_recording());
+        app.tick_second();
+        assert_eq!(app.livedata.elapsed_secs, before + 1);
     }
 
     #[test]
-    fn loading_overlay_renders() {
+    fn summary_save_sets_pending_and_returns_to_main() {
         let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
-        app.screen = Screen::Database;
-        app.loading = Some(Instant::now());
+        app.handle_key_press(KeyCode::Enter); // start ride
+        app.tick_second();
+        app.handle_key_press(KeyCode::Char('q')); // open summary
+        assert_eq!(app.ride, RideState::Summary);
+
+        app.handle_key_press(KeyCode::Char('s')); // save
+        assert_eq!(app.pending_save, Some(true));
+        assert_eq!(app.ride, RideState::Idle);
+        assert_eq!(app.screen, Screen::Main);
+    }
+
+    #[test]
+    fn summary_discard_clears_and_returns_to_main() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter);
+        app.tick_second();
+        app.handle_key_press(KeyCode::Char('q'));
+        assert_eq!(app.ride, RideState::Summary);
+
+        app.handle_key_press(KeyCode::Char('d')); // discard
+        assert_eq!(app.pending_save, Some(false));
+        assert_eq!(app.ride, RideState::Idle);
+        assert_eq!(app.screen, Screen::Main);
+    }
+
+    #[test]
+    fn summary_resume_returns_to_ride() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter);
+        app.tick_second();
+        app.handle_key_press(KeyCode::Char('q'));
+        assert_eq!(app.ride, RideState::Summary);
+
+        app.handle_key_press(KeyCode::Esc);
+        assert_eq!(app.ride, RideState::Running);
+        assert!(app.is_recording());
+    }
+
+    #[test]
+    fn ride_does_not_record_when_leaving_control() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter); // start ride, on Control
+        assert!(app.is_recording());
+        // Leave to Main; recording must stop even though ride is "running".
+        app.handle_key_press(KeyCode::Char('m'));
+        assert_eq!(app.screen, Screen::Main);
+        assert!(!app.is_recording());
+    }
+
+    #[test]
+    fn summary_renders() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter);
+        app.push_power_history();
+        app.push_power_history();
+        app.push_hr_history();
+        app.push_rpm_history();
+        app.push_velocity_history();
+        app.recompute_metrics(200.0, 1.0);
+        app.handle_key_press(KeyCode::Char('q'));
 
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
         terminal
             .draw(|frame| crate::render::draw(frame, &app))
-            .expect("loading overlay should render");
+            .expect("summary overlay should render");
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //
 // Rendering.rs is responsible for rendering the Olympus interface and its pages.
 
-use super::app::{App, DatabaseTab, Screen, SettingsField};
+use super::app::{App, BleUiState, DatabaseTab, RideState, Screen, SettingsField};
 use super::math::{coggan_pwr_model, olt_hr_model, zone2color};
 use super::nav::{MainSelection, SettingsSelection};
 
@@ -156,6 +156,95 @@ fn render_confirm_quit(frame: &mut Frame, area: Rect) {
             .alignment(Alignment::Center),
         popup,
     );
+}
+
+/// Draw the end-of-ride summary dialog (Save / Discard / Resume).
+fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
+    let d = app.livedata();
+    let h = d.elapsed_secs / 3600;
+    let m = (d.elapsed_secs / 60) % 60;
+    let s = d.elapsed_secs % 60;
+    let avg_speed = if d.elapsed_secs > 0 {
+        d.elapsed_distance / (d.elapsed_secs as f32 / 3600.0)
+    } else {
+        0.0
+    };
+    let popup = centered_rect(56, 62, area);
+    frame.render_widget(Clear, popup);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(" Ride Summary ")
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let [summary_area, hint_area] = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(3),
+    ])
+    .areas(inner);
+
+    let lines = vec![
+        Line::from(Span::styled(
+            " Ride complete — save your session?",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Time:     ", Color::DarkGray),
+            Span::raw(format!("{h:02}:{m:02}:{s:02}")),
+            Span::styled("    Distance: ", Color::DarkGray),
+            Span::raw(format!("{:.2} km", d.elapsed_distance)),
+        ]),
+        Line::from(vec![
+            Span::styled("Avg Pwr:  ", Color::DarkGray),
+            Span::raw(format!("{} W", d.avg_pwr)),
+            Span::styled("    Max Pwr:  ", Color::DarkGray),
+            Span::raw(format!("{} W", d.max_pwr)),
+        ]),
+        Line::from(vec![
+            Span::styled("Avg HR:   ", Color::DarkGray),
+            Span::raw(format!("{} bpm", d.avg_hr)),
+            Span::styled("    Max HR:   ", Color::DarkGray),
+            Span::raw(format!("{} bpm", d.max_hr)),
+        ]),
+        Line::from(vec![
+            Span::styled("Avg Spd:  ", Color::DarkGray),
+            Span::raw(format!("{avg_speed:.1} km/h")),
+            Span::styled("    Max Spd:  ", Color::DarkGray),
+            Span::raw(format!("{:.1} km/h", d.max_vel)),
+        ]),
+        Line::from(vec![
+            Span::styled("Calories: ", Color::DarkGray),
+            Span::raw(format!("{:.0} kcal", d.calories)),
+            Span::styled("    TSS: ", Color::DarkGray),
+            Span::raw(format!("{:.0}", d.tss)),
+        ]),
+        Line::from(vec![
+            Span::styled("NP:       ", Color::DarkGray),
+            Span::raw(format!("{:.0} W", d.normalized_pwr)),
+            Span::styled("    IF: ", Color::DarkGray),
+            Span::raw(format!("{:.2}", d.ifac)),
+        ]),
+    ];
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Left), summary_area);
+
+    let hints = vec![
+        Line::from(Span::styled(
+            "[S / Y] Save    [D / N] Discard    [R / Esc] Resume",
+            Style::default().fg(Color::Yellow),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(Span::styled(
+            "Save writes a .fit file + session history (Strava/Garmin ready).",
+            Color::DarkGray,
+        ))
+        .alignment(Alignment::Center),
+    ];
+    frame.render_widget(Paragraph::new(hints), hint_area);
 }
 
 /// Footer rendering function
@@ -833,18 +922,23 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         format!("{uptime_m:02}:{uptime_s:02}")
     };
 
-    // Combine the (single) mocked connection into one readable line.
-    let conn_text: String = app
-        .connection()
-        .iter()
-        .map(|s| s.content.clone())
-        .collect::<Vec<_>>()
-        .join(" ");
+    // Real trainer connection status (name + state, color-coded).
+    let (conn_name, conn_state) = app.connection();
+    let conn_style = match &conn_state {
+        BleUiState::Connected => Color::Green,
+        BleUiState::Simulated => Color::Yellow,
+        BleUiState::Error(_) => Color::Red,
+        _ => Color::DarkGray,
+    };
 
     let systext = Paragraph::new(vec![
         Line::from(vec![
             Span::styled("BT        ", Style::default().fg(Color::DarkGray)),
-            Span::styled(conn_text, Style::default().fg(Color::Green)),
+            Span::styled(format!("{conn_name}"), Style::default().fg(Color::White)),
+            Span::styled(
+                format!("  [{}]", conn_state.label()),
+                Style::default().fg(conn_style).add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(vec![
             Span::styled("UPTIME    ", Style::default().fg(Color::DarkGray)),
@@ -879,6 +973,34 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     ]);
 
     frame.render_widget(systext, sysinner);
+
+    // Paused banner — centered over the control panel when ride is paused.
+    if app.ride == RideState::Paused {
+        let banner_area = centered_rect(42, 14, area);
+        frame.render_widget(Clear, banner_area);
+        let banner = Paragraph::new(vec![
+            Line::from(Span::styled(
+                "  PAUSED  ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .alignment(Alignment::Center),
+            Line::from(Span::styled(
+                "Space: resume  •  Q: finish ride",
+                Style::default().fg(Color::Gray),
+            ))
+            .alignment(Alignment::Center),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::Yellow)),
+        )
+        .alignment(Alignment::Center);
+        frame.render_widget(banner, banner_area);
+    }
 }
 
 // -------------------------------------------------------
@@ -1155,11 +1277,46 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
         SettingsSelection::Appearance => Paragraph::new(format!(
             "Appearance Settings\n-------------------\nTheme: Dark Mode\nFont Size: 12"
         )),
-        SettingsSelection::Bluetooth => Paragraph::new(vec![
-            Line::from("Bluetooth Devices"),
-            Line::from("-----------------"),
-            Line::from(app.connection()),
-        ]),
+        SettingsSelection::Bluetooth => {
+            let (name, state) = app.connection();
+            let state_label = state.label().to_string();
+            let state_color = match &state {
+                BleUiState::Connected => Color::Green,
+                BleUiState::Simulated => Color::Yellow,
+                BleUiState::Error(_) => Color::Red,
+                _ => Color::DarkGray,
+            };
+            let detail = match &state {
+                BleUiState::Error(e) => format!("{e}"),
+                _ => String::new(),
+            };
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    "Bluetooth Devices",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                Line::from(Span::styled("-----------------", Color::DarkGray)),
+                Line::from(vec![
+                    Span::styled("Trainer: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(name, Style::default().fg(Color::White)),
+                ]),
+                Line::from(vec![
+                    Span::styled("Status:  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(state_label, Style::default().fg(state_color)),
+                ]),
+            ];
+            if !detail.is_empty() {
+                lines.push(Line::from(Span::styled(detail, Color::Red)));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "The Tacx Flux S2 connects via FTMS (Fitness Machine Service).",
+                Color::DarkGray,
+            )));
+            Paragraph::new(lines)
+        }
         SettingsSelection::System => Paragraph::new(format!(
             "System Information\n------------------\nVersion: {}",
             app.version()
@@ -1277,9 +1434,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     // Overlays (rendered on top of everything).
     let full = frame.area();
-    if app.is_loading() {
-        render_loading(frame, full);
+    if app.ride == RideState::Summary {
+        render_summary(frame, app, full);
     } else if app.confirm_quit {
         render_confirm_quit(frame, full);
+    } else if app.is_loading() {
+        render_loading(frame, full);
     }
 }

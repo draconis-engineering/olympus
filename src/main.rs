@@ -12,7 +12,8 @@ mod math;
 mod nav;
 mod render;
 
-use app::{Action, App, LiveData, UserData};
+use app::{Action, App, BleUiState, LiveData, UserData};
+use ble::BleState;
 use boot::{init, restore};
 use chrono::Utc;
 use crossterm::event::{Event, KeyEventKind};
@@ -106,19 +107,30 @@ async fn main() -> io::Result<()> {
 
     // ---- FIT recording -----------------------------------------------------
     let mut fit = FitWriter::new();
-    let mut recording = false;
+    // Per-second time-series samples for the analytics table.
+    let mut samples: Vec<data::Sample> = Vec::new();
 
     let mut last_tick = Instant::now();
 
     loop {
         let frame_start = Instant::now();
-        // Move from the loading overlay into the Control panel once it elapses.
+        // No-op for compatibility (the ride engine tracks readiness).
         app.poll_loading();
         terminal.draw(|frame| draw(frame, &app))?;
 
-        // Drain any state changes from the driver.
+        // Drain trainer connection-state changes into the app for display.
         while let Ok(state) = state_rx.try_recv() {
-            let _ = state;
+            match state {
+                BleState::Idle => app.ble = BleUiState::Idle,
+                BleState::Scanning => app.ble = BleUiState::Scanning,
+                BleState::Connecting => app.ble = BleUiState::Connecting,
+                BleState::Connected { name } => {
+                    app.ble = BleUiState::Connected;
+                    app.trainer_name = name;
+                }
+                BleState::Simulated => app.ble = BleUiState::Simulated,
+                BleState::Error(e) => app.ble = BleUiState::Error(e),
+            }
         }
 
         // Process incoming telemetry as it arrives (avoids blocking the loop).
@@ -133,9 +145,6 @@ async fn main() -> io::Result<()> {
                 0.0,
                 0.0,
             );
-            if !recording && (t.power.is_some() || t.speed.is_some()) {
-                recording = true;
-            }
         }
 
         // Handle user input.
@@ -145,6 +154,14 @@ async fn main() -> io::Result<()> {
                     break;
                 }
             }
+        }
+
+        // When the end-of-ride dialog picks Save or Discard, persist/clear the
+        // recording here (main owns the FIT writer and the sample buffer).
+        if let Some(save) = app.pending_save.take() {
+            finish_ride(&app, &mut fit, &mut samples, save);
+            // The session history changed; force the Database tab to rescan.
+            app.database.loaded = false;
         }
 
         // One-second metronome: advance the ride clock and update metrics.
@@ -158,15 +175,15 @@ async fn main() -> io::Result<()> {
                 let _ = cmd_tx.send(ble::BleCommand::SetTargetPower(target)).await;
             }
 
-            app.accumulate_distance(1.0);
-            app.push_power_history();
-            app.push_hr_history();
-            app.push_rpm_history();
-            app.push_velocity_history();
-            app.recompute_metrics(profile.ftp as f32, 1.0);
+            // Only accrue distance / record samples while a ride is live.
+            if app.is_recording() {
+                app.accumulate_distance(1.0);
+                app.push_power_history();
+                app.push_hr_history();
+                app.push_rpm_history();
+                app.push_velocity_history();
+                app.recompute_metrics(profile.ftp as f32, 1.0);
 
-            // Record a FIT sample once per second.
-            if recording || app.workout().is_some() {
                 fit.push(RecordSample {
                     timestamp: Utc::now().timestamp(),
                     power: app.livedata.crnt_pwr,
@@ -174,6 +191,13 @@ async fn main() -> io::Result<()> {
                     heart_rate: app.livedata.crnt_hr.min(255) as u8,
                     speed_mps: app.livedata.crnt_vel / 3.6,
                     distance_m: app.livedata.elapsed_distance * 1000.0,
+                });
+                samples.push(data::Sample {
+                    t: Utc::now().timestamp(),
+                    power: app.livedata.crnt_pwr,
+                    cadence: app.livedata.crnt_rpm.min(255) as u16,
+                    heart_rate: app.livedata.crnt_hr.min(255) as u16,
+                    speed: app.livedata.crnt_vel / 3.6,
                 });
             }
         }
@@ -189,7 +213,7 @@ async fn main() -> io::Result<()> {
     let _ = cmd_tx.send(ble::BleCommand::Disconnect).await;
     let _ = rx.close();
 
-    // Finalize FIT file.
+    // Finalize any leftover FIT file (e.g. quit without an explicit save).
     if !fit.is_empty() {
         std::fs::create_dir_all("data/.fit").ok();
         let stamp = Utc::now().format("%Y%m%d_%H%M%S");
@@ -198,8 +222,29 @@ async fn main() -> io::Result<()> {
             Ok(_) => log::info!("Wrote {}", fit_path.display()),
             Err(e) => log::error!("Failed to write FIT: {e}"),
         }
+    }
 
-        // Persist a session summary to SQLite.
+    let _ = restore().await;
+    Ok(())
+}
+
+/// Persist a finished ride to a FIT file and the SQLite history, or discard it.
+/// Called from the main loop once the end-of-ride dialog picks an option.
+fn finish_ride(
+    app: &App,
+    fit: &mut FitWriter,
+    samples: &mut Vec<data::Sample>,
+    save: bool,
+) {
+    if save && !fit.is_empty() {
+        std::fs::create_dir_all("data/.fit").ok();
+        let stamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let fit_path = std::path::Path::new("data/.fit").join(format!("ride_{stamp}.fit"));
+        match fit.finish(&fit_path) {
+            Ok(_) => log::info!("Wrote {}", fit_path.display()),
+            Err(e) => log::error!("Failed to write FIT: {e}"),
+        }
+
         if let Ok(conn) = data::init_db(std::path::Path::new("data/olympus.db")) {
             let avg_vel = if app.livedata.elapsed_secs > 0 {
                 app.livedata.elapsed_distance / (app.livedata.elapsed_secs as f32 / 3600.0)
@@ -218,10 +263,16 @@ async fn main() -> io::Result<()> {
                 avg_power: app.livedata.avg_pwr,
                 timestamp: Utc::now().timestamp(),
             };
-            let _ = data::save_fit_session(&conn, &session, &fit_path.to_string_lossy());
+            match data::save_ride(&conn, &session, &fit_path.to_string_lossy(), samples) {
+                Ok(id) => log::info!("Saved ride #{id} with {} samples", samples.len()),
+                Err(e) => log::error!("Failed to persist ride: {e}"),
+            }
         }
+    } else if !save {
+        log::info!("Ride discarded");
     }
 
-    let _ = restore().await;
-    Ok(())
+    // Reset the recording buffers for the next ride.
+    *fit = FitWriter::new();
+    samples.clear();
 }

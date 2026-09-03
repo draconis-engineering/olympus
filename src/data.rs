@@ -132,8 +132,12 @@ pub fn save_profile(profile: &UserProfile) -> Result<(), String> {
     std::fs::write(PROFILE_PATH, json).map_err(|e| e.to_string())
 }
 
-/// Initialize SQLite database and create tables
+/// Initialize SQLite database, create/migrate tables, and ensure the data
+/// directory exists.
 pub fn init_db(path: &Path) -> rusqlite::Result<Connection> {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let conn = Connection::open(path)?;
 
     conn.execute(
@@ -153,10 +157,92 @@ pub fn init_db(path: &Path) -> rusqlite::Result<Connection> {
         [],
     )?;
 
+    // Per-second time-series samples so analytics (NP, power curves, etc.) can
+    // be computed retroactively. One row per recorded second.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS samples (
+            id INTEGER PRIMARY KEY,
+            session_id INTEGER NOT NULL REFERENCES fit_sessions(id) ON DELETE CASCADE,
+            t INTEGER NOT NULL,
+            power INTEGER NOT NULL,
+            cadence INTEGER NOT NULL,
+            heart_rate INTEGER NOT NULL,
+            speed REAL NOT NULL
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_samples_session ON samples(session_id)",
+        [],
+    )?;
+
+    // Schema version for future migrations.
+    let user_version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if user_version < 2 {
+        conn.pragma_update(None, "user_version", 2)?;
+    }
+
     Ok(conn)
 }
 
-/// Save a FIT session to SQLite
+/// A single per-second ride sample.
+#[derive(Debug, Clone, Copy)]
+pub struct Sample {
+    /// Unix timestamp (seconds).
+    pub t: i64,
+    pub power: u16,
+    pub cadence: u16,
+    pub heart_rate: u16,
+    /// Speed in m/s.
+    pub speed: f32,
+}
+
+/// Persist a completed ride: the session summary + its time-series samples, in
+/// one transaction. Returns the new session id.
+pub fn save_ride(
+    conn: &Connection,
+    session: &FitSession,
+    filename: &str,
+    samples: &[Sample],
+) -> rusqlite::Result<i64> {
+    conn.execute(
+        "INSERT INTO fit_sessions (filename, total_distance, total_calories, avg_speed, max_speed, max_heart_rate, avg_heart_rate, max_power, avg_power) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        (
+            filename,
+            session.total_distance as f64,
+            session.total_calories as f64,
+            session.avg_speed as f64,
+            session.max_speed as f64,
+            session.max_heart_rate as i32,
+            session.avg_heart_rate as i32,
+            session.max_power as i32,
+            session.avg_power as i32,
+        ),
+    )?;
+    let id = conn.last_insert_rowid();
+
+    {
+        let mut stmt = conn.prepare(
+            "INSERT INTO samples (session_id, t, power, cadence, heart_rate, speed) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )?;
+        for s in samples {
+            stmt.execute((
+                id,
+                s.t,
+                s.power as i32,
+                s.cadence as i32,
+                s.heart_rate as i32,
+                s.speed as f64,
+            ))?;
+        }
+    }
+
+    Ok(id)
+}
+
+/// Save a FIT session to SQLite (summary only, no samples).
+#[allow(dead_code)]
 pub fn save_fit_session(
     conn: &Connection,
     session: &FitSession,
@@ -185,6 +271,7 @@ pub fn save_fit_session(
 
 /// One stored session row, as read back from the SQLite history.
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct StoredSession {
     pub id: i64,
     pub filename: String,
