@@ -123,11 +123,11 @@ pub fn intensity_factor(np: f64, ftp: f64) -> f64 {
 
 /// Training Stress Score (Coggan): TSS = (duration_s * NP * IF) / (FTP * 3600) * 100.
 /// Scales ~0 for 1h at FTP (IF=1.0 gives TSS=100).
-pub fn tss(normalized_power: f64, intensity_factor: f64, ftp: f64, duration_s: f64) -> f64 {
+pub fn tss(np: f64, ifac: f64, ftp: f64, duration_s: f64) -> f64 {
     if ftp <= 0.0 || duration_s <= 0.0 {
         return 0.0;
     }
-    (duration_s * normalized_power * intensity_factor) / (ftp * 3600.0) * 100.0
+    (duration_s * np * ifac) / (ftp * 3600.0) * 100.0
 }
 
 /// Mechanical work done, kilojoules: `avg_power (W) * seconds / 1000`.
