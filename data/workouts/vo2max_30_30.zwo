@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<workout_file>
+  <name><en_US>VO2max 30/30</en_US></name>
+  <description><en_US>Six 30s VO2max repeats with 30s active recovery at 45% FTP</en_US></description>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.40" PowerHigh="0.60"/>
+    <IntervalsT Repeat="6" OnDuration="30" OffDuration="30" OnPower="0.90" OffPower="0.45"/>
+    <Cooldown Duration="600" PowerLow="0.35" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

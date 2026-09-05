@@ -220,7 +220,9 @@ impl BleUiState {
 }
 
 /// Capacity (in samples) of the rolling power, heart rate, and cadence history buffers.
-pub const POWER_HISTORY_CAPACITY: usize = 300;
+/// The power buffer must hold a full 20-min FTP test (1200 samples at 1 Hz) so the
+/// post-ride FTP suggestion can read a `best20`.
+pub const POWER_HISTORY_CAPACITY: usize = 1200;
 pub const HR_HISTORY_CAPACITY: usize = 300;
 pub const RPM_HISTORY_CAPACITY: usize = 300;
 pub const VEL_HISTORY_CAPACITY: usize = 300;
@@ -444,6 +446,9 @@ pub struct App {
     pub session_detail: Option<SessionDetail>,
     /// Stats screen aggregates.
     pub stats: StatsState,
+    /// FTP update prompt from the ride summary: `Some(suggested_ftp)` when the
+    /// ride's best 20-min power (× 0.95) clears the current FTP by a margin.
+    pub confirm_ftp: Option<u16>,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData) -> Self {
@@ -469,6 +474,7 @@ impl App {
             erg_override: None,
             session_detail: None,
             stats: StatsState::default(),
+            confirm_ftp: None,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -550,6 +556,7 @@ impl App {
         self.paused_seconds = 0;
         self.pending_save = None;
         self.erg_override = None;
+        self.confirm_ftp = None;
     }
 
     /// Move to the Control panel, starting a fresh ride if none is active.
@@ -575,6 +582,31 @@ impl App {
         if matches!(self.ride, RideState::Running | RideState::Paused) {
             self.ride = RideState::Summary;
         }
+        self.confirm_ftp = self.ftp_suggestion();
+    }
+
+    /// Deterministic "AI FTP detection": the best 20-min rolling mean of the
+    /// ride (`best20`) × 0.95 is a proposed FTP. Only suggest when it beats the
+    /// rider's current FTP by a 5 W margin so the prompt stays out of the way.
+    pub fn ftp_suggestion(&self) -> Option<u16> {
+        let powers: Vec<u16> = self
+            .power_history
+            .iter()
+            .map(|&p| p.min(u16::MAX as u64) as u16)
+            .collect();
+        let best20 = crate::math::best_rolling_mean(&powers, 1200);
+        if best20 == 0 {
+            return None;
+        }
+        let suggested = (f64::from(best20) * 0.95).round() as u16;
+        (suggested > self.userdata.ftp() + 5).then_some(suggested)
+    }
+
+    /// Adopt the FTP the summary dialog suggested, persisting to the profile.
+    pub fn apply_ftp_suggestion(&mut self, ftp: u16) {
+        self.userdata.profile.ftp = ftp;
+        let _ = self.save_profile();
+        self.confirm_ftp = None;
     }
 
     /// Close the summary dialog and return to the ride (resume).
@@ -582,6 +614,7 @@ impl App {
         if self.ride == RideState::Summary {
             self.ride = RideState::Running;
         }
+        self.confirm_ftp = None;
     }
 
     /// Save or discard the ride, returning to the Main menu. The main loop
@@ -590,6 +623,7 @@ impl App {
         self.pending_save = Some(save);
         self.ride = RideState::Idle;
         self.screen = Screen::Main;
+        self.confirm_ftp = None;
         if save {
             self.last_workout_name = workout_name;
         }
@@ -766,7 +800,7 @@ impl App {
         if self.database.loaded {
             return;
         }
-        self.database.workouts = crate::data::list_workout_files();
+        self.database.workouts = crate::data::list_workout_files(self.userdata.ftp());
         if let Ok(conn) = crate::data::init_db(std::path::Path::new("data/olympus.db")) {
             if let Ok(sessions) = crate::data::list_sessions(&conn, 50) {
                 self.database.sessions = sessions;
@@ -1195,6 +1229,21 @@ impl App {
             };
         }
 
+        // The FTP update prompt sits above the ride summary and claims Y/N
+        // while it's showing (before arriving at Save/Discard handling).
+        if let Some(suggested) = self.confirm_ftp {
+            match key_code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    self.apply_ftp_suggestion(suggested);
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.confirm_ftp = None;
+                }
+                _ => {}
+            }
+            return Action::Continue;
+        }
+
         // The end-of-ride summary dialog grabs focus while it's open.
         if self.ride == RideState::Summary {
             return self.handle_summary_key(key_code);
@@ -1256,14 +1305,20 @@ mod tests {
             crate::data::WorkoutEntry {
                 name: "a".into(),
                 path: "a.zwo".into(),
+                duration_seconds: 300,
+                tss: 20.0,
             },
             crate::data::WorkoutEntry {
                 name: "b".into(),
                 path: "b.zwo".into(),
+                duration_seconds: 600,
+                tss: 40.0,
             },
             crate::data::WorkoutEntry {
                 name: "c".into(),
                 path: "c.zwo".into(),
+                duration_seconds: 900,
+                tss: 60.0,
             },
         ];
         st.tab = DatabaseTab::Workouts;
@@ -1281,6 +1336,8 @@ mod tests {
         st.workouts.push(crate::data::WorkoutEntry {
             name: "x".into(),
             path: "x.zwo".into(),
+            duration_seconds: 300,
+            tss: 20.0,
         });
         st.sessions.push(crate::data::StoredSession {
             id: 1,
@@ -1367,6 +1424,35 @@ mod tests {
     #[test]
     fn database_screen_renders() {
         smoke_render(Screen::Database, 80, 24);
+    }
+
+    #[test]
+    fn workouts_tab_renders_subtitle() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.database.tab = DatabaseTab::Workouts;
+        app.database.workouts = vec![
+            crate::data::WorkoutEntry {
+                name: "ftp_test_20min".into(),
+                path: "C:\\data\\workouts\\ftp_test_20min.zwo".into(),
+                duration_seconds: 2100,
+                tss: 62.0,
+            },
+            crate::data::WorkoutEntry {
+                name: "sweet_spot".into(),
+                path: "C:\\data\\workouts\\sweet_spot.zwo".into(),
+                duration_seconds: 3300,
+                tss: 96.0,
+            },
+        ];
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::render::draw(frame, &app))
+            .expect("workouts tab with subtitles should render");
     }
 
     #[test]
@@ -1585,6 +1671,78 @@ mod tests {
         terminal
             .draw(|frame| crate::render::draw(frame, &app))
             .expect("summary overlay should render");
+    }
+
+    #[test]
+    fn ftp_suggestion_from_full_history() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.userdata.profile.ftp = 200;
+        // A 20-min test (1200 samples) where the rider averaged 240 W.
+        app.power_history = vec![240u64; 1200];
+        assert_eq!(app.ftp_suggestion(), Some(228));
+    }
+
+    #[test]
+    fn ftp_suggestion_absent_for_short_or_weak_rides() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.userdata.profile.ftp = 200;
+        // Too short to fill a 20-min window (rolling mean returns 0).
+        app.power_history = vec![240u64; 100];
+        assert_eq!(app.ftp_suggestion(), None);
+        // Full history but no improvement worth prompting about.
+        app.power_history = vec![200u64; 1200];
+        assert_eq!(app.ftp_suggestion(), None);
+    }
+
+    #[test]
+    fn ftp_prompt_y_applies_n_dismisses() {
+        // The prompt persists via `save_profile()`, which targets the real
+        // `data/user/profile.json`; back it up and restore it afterwards so
+        // the test leaves the rider's profile untouched.
+        let profile_path = std::path::Path::new(crate::data::PROFILE_PATH);
+        let original = std::fs::read(profile_path).ok();
+        struct Restore(std::path::PathBuf, Option<Vec<u8>>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.1 {
+                    Some(bytes) => std::fs::write(&self.0, bytes).ok(),
+                    None => std::fs::remove_file(&self.0).ok(),
+                };
+            }
+        }
+        let _guard = Restore(profile_path.to_path_buf(), original);
+
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.userdata.profile.ftp = 200;
+        app.confirm_ftp = Some(228);
+        app.ride = RideState::Summary;
+
+        app.handle_key_press(KeyCode::Char('y'));
+        assert_eq!(app.userdata.profile.ftp, 228);
+        assert_eq!(app.confirm_ftp, None);
+        // Summary dialog is still up for Save/Discard.
+        assert_eq!(app.ride, RideState::Summary);
+
+        // 'n' leaves the profile untouched and dismisses the prompt.
+        app.confirm_ftp = Some(240);
+        app.handle_key_press(KeyCode::Char('n'));
+        assert_eq!(app.userdata.profile.ftp, 228);
+        assert_eq!(app.confirm_ftp, None);
+    }
+
+    #[test]
+    fn ftp_prompt_overlay_renders() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.userdata.profile.ftp = 200;
+        app.ride = RideState::Summary;
+        app.confirm_ftp = Some(228);
+
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| crate::render::draw(frame, &app))
+            .expect("FTP prompt overlay should render");
     }
 
     #[test]

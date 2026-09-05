@@ -401,4 +401,24 @@ mod tests {
         let workout = parse_zwo_workout(&path, 300).unwrap();
         assert_eq!(workout.steps[0].target_power, 200);
     }
+
+    #[test]
+    fn shipped_workouts_parse_and_have_totals() {
+        let workouts: [(&str, u32); 4] = [
+            ("ftp_test_20min", 2100),
+            ("sweet_spot", 3300),
+            ("vo2max_30_30", 1560),
+            ("recovery", 2400),
+        ];
+        for (stem, expected_total) in workouts {
+            let path = format!(
+                "{}/{stem}.zwo",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/data/workouts")
+            );
+            let w = parse_zwo_workout(std::path::Path::new(&path), 200)
+                .unwrap_or_else(|e| panic!("{stem}.zwo failed to parse: {e}"));
+            assert!(!w.steps.is_empty());
+            assert_eq!(w.total_seconds, expected_total, "{stem} total mismatch");
+        }
+    }
 }

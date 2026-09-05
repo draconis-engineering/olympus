@@ -134,7 +134,7 @@ cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
 - [x] **Ride control:** `+/-` ERG nudge, `n`/`p` skip step, `e` ERG↔hold (Phase 1)
 - [x] **BT robustness:** `Scan` button in Settings, error banner, `Simulated` qualifier (Phase 2)
 - [x] **History & Stats:** Sessions drill-down (samples replay) + minimal Stats (weekly TSS, PR `1m/5m/20m`) (Phase 3)
-- [ ] **Content & FTP:** 4 curated workouts + `TSS|duration` subtitles + `best20×0.95` FTP suggestion (Phase 4, single `ftp_test_20min.zwo` for 1.0)
+- [x] **Content & FTP:** 4 curated workouts + `TSS|duration` subtitles + `best20×0.95` FTP suggestion (Phase 4, single `ftp_test_20min.zwo` for 1.0)
 - [ ] **Export:** Manual `data/.fit` hint in summary; Garmin/Strava/Zwift auto-upload deferred to 1.1 (Phase 5)
 - [ ] **Polish:** `?` help overlay, `1.0.0-rc1` bump (Phase 6)
 

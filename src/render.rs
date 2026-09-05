@@ -201,6 +201,75 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
         .alignment(Alignment::Center),
     ];
     frame.render_widget(Paragraph::new(hints), hint_area);
+
+    // FTP suggestion prompt (rides on top of the summary dialog).
+    if let Some(suggested) = app.confirm_ftp {
+        let popup = centered_rect(52, 30, area);
+        frame.render_widget(Clear, popup);
+        let ftp_lines = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "FTP suggestion",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .alignment(Alignment::Center),
+            Line::from(""),
+            Line::from(Span::styled(
+                format!(
+                    "Best 20-min power ≈ {} W  →  {} W (× 0.95)",
+                    best20_for(app),
+                    suggested
+                ),
+                Style::default().fg(Color::White),
+            ))
+            .alignment(Alignment::Center),
+            Line::from(Span::styled(
+                format!("Current FTP: {} W", app.userdata().profile.ftp),
+                Style::default().fg(Color::DarkGray),
+            ))
+            .alignment(Alignment::Center),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Start the 20-min FTP test at current FTP; the trainer ERG will hold it.",
+                Style::default().fg(Color::DarkGray),
+            ))
+            .alignment(Alignment::Center),
+            Line::from(""),
+            Line::from(Span::styled(
+                format!(
+                "[ Y ] Update FTP    [ N / Esc ] Keep {} W",
+                app.userdata().profile.ftp
+            ),
+                Style::default().fg(Color::Yellow),
+            ))
+            .alignment(Alignment::Center),
+            Line::from(""),
+        ];
+        frame.render_widget(
+            Paragraph::new(ftp_lines)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
+                        .title(" Train Smarter ")
+                        .border_style(Style::default().fg(Color::Cyan)),
+                )
+                .alignment(Alignment::Center),
+            popup,
+        );
+    }
+}
+
+/// Best 20-min rolling power over the just-finished ride, for the FTP prompt.
+fn best20_for(app: &App) -> u16 {
+    let powers: Vec<u16> = app
+        .power_history()
+        .iter()
+        .map(|&p| p.min(u16::MAX as u64) as u16)
+        .collect();
+    crate::math::best_rolling_mean(&powers, 1200)
 }
 
 /// Footer rendering function
@@ -1088,8 +1157,16 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
                 .enumerate()
                 .map(|(i, w)| {
                     let is_sel = i == selected_index;
-                    let name = w.path.rsplit('/').next().unwrap_or(&w.path).to_string();
+                    let name = std::path::Path::new(&w.path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&w.path)
+                        .to_string();
                     let marker = if is_sel { " ▶ " } else { "   " };
+                    let mm = w.duration_seconds / 60;
+                    let ss = w.duration_seconds % 60;
+                    let subtitle =
+                        format!("{:>6.0} TSS   {:2}:{:02}", w.tss, mm, ss);
                     Line::from(vec![
                         Span::styled(
                             marker,
@@ -1108,6 +1185,11 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
                             } else {
                                 gray
                             },
+                        ),
+                        Span::styled(if is_sel { "   " } else { "   " }, dark_gray),
+                        Span::styled(
+                            subtitle,
+                            if is_sel { white } else { dark_gray },
                         ),
                     ])
                 })

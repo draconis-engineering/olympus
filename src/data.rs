@@ -454,10 +454,16 @@ pub const WORKOUTS_DIR: &str = "data/workouts";
 pub struct WorkoutEntry {
     pub name: String,
     pub path: String,
+    /// Total scheduled duration from the file, in seconds.
+    pub duration_seconds: u32,
+    /// Estimated Training Stress Score, `TSS ≈ Σ(target/FTP)²·dur/3600·100`,
+    /// computed against the rider's current FTP at scan time.
+    pub tss: f32,
 }
 
-/// Scan the workouts directory for `.zwo` / `.erg` files.
-pub fn list_workout_files() -> Vec<WorkoutEntry> {
+/// Scan the workouts directory for `.zwo` / `.erg` files, parsing each so the
+/// UI can show its duration and estimated TSS (against `ftp`).
+pub fn list_workout_files(ftp: u16) -> Vec<WorkoutEntry> {
     let Ok(read_dir) = std::fs::read_dir(WORKOUTS_DIR) else {
         return Vec::new();
     };
@@ -478,9 +484,39 @@ pub fn list_workout_files() -> Vec<WorkoutEntry> {
             .and_then(|s| s.to_str())
             .unwrap_or("workout")
             .to_string();
+
+        // Parse just enough to derive the subtitle (duration + estimated TSS).
+        let workout = if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("zwo"))
+            .unwrap_or(false)
+        {
+            crate::erg::parse_zwo_workout(&path, ftp)
+        } else {
+            crate::erg::load_erg_workout(&path)
+        };
+        let (duration_seconds, tss) = match workout {
+            Ok(w) => {
+                let tss = if ftp == 0 {
+                    0.0
+                } else {
+                    w.steps.iter().fold(0.0, |acc, step| {
+                        let dur_s = (step.end_secs - step.start_secs) as f64;
+                        let ratio = step.target_power as f64 / ftp as f64;
+                        acc + ratio * ratio * dur_s / 3600.0 * 100.0
+                    })
+                };
+                (w.total_seconds, tss as f32)
+            }
+            Err(_) => (0, 0.0),
+        };
+
         entries.push(WorkoutEntry {
             name,
             path: path.to_string_lossy().into_owned(),
+            duration_seconds,
+            tss,
         });
     }
 

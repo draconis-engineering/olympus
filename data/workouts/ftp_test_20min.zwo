@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<workout_file>
+  <name><en_US>20min FTP Test</en_US></name>
+  <description><en_US>Warmup 10m + 20m all-out + Cooldown. Suggested FTP = 95% of your best 20-min power.</en_US></description>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.40" PowerHigh="0.55"/>
+    <SteadyState Duration="1200" Power="1.02"/>
+    <Cooldown Duration="300" PowerLow="0.35" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

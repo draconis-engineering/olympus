@@ -32,7 +32,7 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 - **Settings** `1160` — sidebar `General/Appearance/Bluetooth/System/User` `src/nav.rs:95`; Bluetooth live `state.label()` `1283`, User profile `Name/Weight/Height/FTP/MaxHR` editable with clamped `commit_edit()` `347` + `save_profile()` JSON `119`. General/Appearance/System stubs.
 - **Stats** `1399` — stub `Paragraph("Stats\n------")`; `StatsSelection{Overview,Rides}` `124` unused.
 
-**Engine:** `LiveData` `src/app.rs:14` + `power/hr/rpm/vel_history` cap 300 `218`, `recompute_metrics()` `634`, `tick_second()` `713` + `accumulate_distance()` `734` frozen when `is_recording()==Screen::Control && Running` `500`, `CrankTracker` cadence `src/ble.rs:40` (`Δrevs*1024*60/Δtime`), `find_trainer()` FTMS scan `264`, `set_target_power()` `464`, `emit_simulated()` fallback `488`, `.erg` KV `113` + `.zwo` XML `190` (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP` `311`), FIT writer `FileId 0 + Record 20 + Session 18` + CRC `src/fit_writer.rs:191` round-trip tested `356`, SQLite `fit_sessions + samples` `137` + `save_ride()` `200`, `finish_ride()` `src/main.rs:231` with `Save/Discard/Resume` overlay `src/render.rs:162`.
+**Engine:** `LiveData` `src/app.rs:14` + `power/hr/rpm/vel_history` cap 1200/300/300/300 `218`, `recompute_metrics()` `634`, `tick_second()` `713` + `accumulate_distance()` `734` frozen when `is_recording()==Screen::Control && Running` `500`, `CrankTracker` cadence `src/ble.rs:40` (`Δrevs*1024*60/Δtime`), `find_trainer()` FTMS scan `264`, `set_target_power()` `464`, `emit_simulated()` fallback `488`, `.erg` KV `113` + `.zwo` XML `190` (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP` `311`), FIT writer `FileId 0 + Record 20 + Session 18` + CRC `src/fit_writer.rs:191` round-trip tested `356`, SQLite `fit_sessions + samples` `137` + `save_ride()` `200`, `finish_ride()` `src/main.rs:231` with `Save/Discard/Resume` overlay `src/render.rs:162`.
 
 **Debt / stubs to fix before 1.0:** `is_loading()` dead `src/app.rs:566` → `render_loading()` `77` never shown; `paused_seconds` `417` never incremented; `ELEV/GRAD/Egain` always `0.0` `src/main.rs:143`; FIT `total_calories=0` `src/fit_writer.rs:223`; `env_logger` never `init()`; `crossbeam-channel`/`uuid`/`serde-xml-rs` shadowed by `xml` unused `Cargo.toml:19`.
 
@@ -69,9 +69,9 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 
 ### Phase 4 — Content & FTP (2 days)
 
-- [ ] Ship 4 workouts in `data/workouts/`: `ftp_test_20min.zwo` *(the one for 1.0)*, `sweet_spot.zwo` (exists), `vo2max_30_30.zwo`, `recovery.zwo` — all validated via `erg::parse_zwo_workout` `190`
-- [ ] Workouts list subtitle `TSS | duration` per row (`TSS ≈ Σ(target/FTP)²·dur/3600·100` on `list_workout_files` load `src/data.rs:329`)
-- [ ] Heuristic in `render_summary` `src/render.rs:162`: `best20 = max rolling_mean(power_history,1200)`; if `best20*0.95 > ftp+5` prompt `Update FTP to X? [Y/N]` — deterministic 80 % of TrainerRoad AI Detection, no ML.
+- [x] Ship 4 workouts in `data/workouts/`: `ftp_test_20min.zwo` *(the one for 1.0)*, `sweet_spot.zwo` (exists), `vo2max_30_30.zwo`, `recovery.zwo` — all validated via `erg::parse_zwo_workout` `190`
+- [x] Workouts list subtitle `TSS | duration` per row (`TSS ≈ Σ(target/FTP)²·dur/3600·100` on `list_workout_files` load `src/data.rs:329`)
+- [x] Heuristic in `render_summary` `src/render.rs:162`: `best20 = max rolling_mean(power_history,1200)`; if `best20*0.95 > ftp+5` prompt `Update FTP to X? [Y/N]` — deterministic 80 % of TrainerRoad AI Detection, no ML.
 
 > **FTP test choice for 1.0:** Single **20-min test** (`Warmup 10m + 20m all-out + Cooldown`) for simplicity. It reuses existing `rolling_mean(...,1200)` `src/app.rs:498` and `≤10→×FTP` `src/erg.rs:311`. Ramp test added in 1.1.
 
