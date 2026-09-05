@@ -48,11 +48,56 @@ fn resolve_workout(ftp: u16) -> Option<erg::Workout> {
     }
 }
 
+/// Persist a finished ride to a FIT file and the SQLite history, or discard it.
+/// Called from the main loop once the end-of-ride dialog picks an option.
+fn finish_ride(app: &App, fit: &mut FitWriter, samples: &mut Vec<data::Sample>, save: bool) {
+    if save && !fit.is_empty() {
+        std::fs::create_dir_all("data/.fit").ok();
+        let stamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let fit_path = std::path::Path::new("data/.fit").join(format!("ride_{stamp}.fit"));
+        match fit.finish(&fit_path) {
+            Ok(_) => log::info!("Wrote {}", fit_path.display()),
+            Err(e) => log::error!("Failed to write FIT: {e}"),
+        }
+
+        if let Ok(conn) = data::init_db(std::path::Path::new("data/olympus.db")) {
+            let avg_vel = if app.livedata.elapsed_secs > 0 {
+                app.livedata.elapsed_distance / (app.livedata.elapsed_secs as f32 / 3600.0)
+            } else {
+                0.0
+            };
+            let session = data::FitSession {
+                total_distance: app.livedata.elapsed_distance,
+                total_calories: app.livedata.calories,
+                total_power: app.livedata.avg_pwr as f32,
+                avg_speed: avg_vel,
+                max_speed: app.livedata.max_vel,
+                max_heart_rate: app.livedata.max_hr,
+                avg_heart_rate: app.livedata.avg_hr,
+                max_power: app.livedata.max_pwr,
+                avg_power: app.livedata.avg_pwr,
+                timestamp: Utc::now().timestamp(),
+            };
+            match data::save_ride(&conn, &session, &fit_path.to_string_lossy(), samples) {
+                Ok(id) => log::info!("Saved ride #{id} with {} samples", samples.len()),
+                Err(e) => log::error!("Failed to persist ride: {e}"),
+            }
+        }
+    } else if !save {
+        log::info!("Ride discarded");
+    }
+
+    // Reset the recording buffers for the next ride.
+    *fit = FitWriter::new();
+    samples.clear();
+}
+
 #[tokio::main]
 async fn main() -> io::Result<()> {
     // Initialize the logger first so log::info!/error! are visible instead of
     // silent (e.g. FIT write failures, BLE scan problems).
-    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).try_init();
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .try_init();
 
     // Ensure the standard data directories exist so a fresh install has
     // somewhere for FIT files, the SQLite DB and bundled workouts.
@@ -65,6 +110,7 @@ async fn main() -> io::Result<()> {
     let livedata = LiveData::new();
 
     // Load the rider profile (JSON) instead of hardcoded values.
+    // TODO: Load settings here
     let profile = data::load_profile();
     let userdata = UserData::new(profile.clone());
 
@@ -234,53 +280,4 @@ async fn main() -> io::Result<()> {
 
     let _ = restore().await;
     Ok(())
-}
-
-/// Persist a finished ride to a FIT file and the SQLite history, or discard it.
-/// Called from the main loop once the end-of-ride dialog picks an option.
-fn finish_ride(
-    app: &App,
-    fit: &mut FitWriter,
-    samples: &mut Vec<data::Sample>,
-    save: bool,
-) {
-    if save && !fit.is_empty() {
-        std::fs::create_dir_all("data/.fit").ok();
-        let stamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let fit_path = std::path::Path::new("data/.fit").join(format!("ride_{stamp}.fit"));
-        match fit.finish(&fit_path) {
-            Ok(_) => log::info!("Wrote {}", fit_path.display()),
-            Err(e) => log::error!("Failed to write FIT: {e}"),
-        }
-
-        if let Ok(conn) = data::init_db(std::path::Path::new("data/olympus.db")) {
-            let avg_vel = if app.livedata.elapsed_secs > 0 {
-                app.livedata.elapsed_distance / (app.livedata.elapsed_secs as f32 / 3600.0)
-            } else {
-                0.0
-            };
-            let session = data::FitSession {
-                total_distance: app.livedata.elapsed_distance,
-                total_calories: app.livedata.calories,
-                total_power: app.livedata.avg_pwr as f32,
-                avg_speed: avg_vel,
-                max_speed: app.livedata.max_vel,
-                max_heart_rate: app.livedata.max_hr,
-                avg_heart_rate: app.livedata.avg_hr,
-                max_power: app.livedata.max_pwr,
-                avg_power: app.livedata.avg_pwr,
-                timestamp: Utc::now().timestamp(),
-            };
-            match data::save_ride(&conn, &session, &fit_path.to_string_lossy(), samples) {
-                Ok(id) => log::info!("Saved ride #{id} with {} samples", samples.len()),
-                Err(e) => log::error!("Failed to persist ride: {e}"),
-            }
-        }
-    } else if !save {
-        log::info!("Ride discarded");
-    }
-
-    // Reset the recording buffers for the next ride.
-    *fit = FitWriter::new();
-    samples.clear();
 }
