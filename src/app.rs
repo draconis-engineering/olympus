@@ -159,6 +159,8 @@ pub enum Screen {
     Database,
     Settings,
     Stats,
+    /// Drill-down view of a single stored session (Phase 3).
+    SessionDetail,
 }
 
 #[derive(PartialEq, Debug)]
@@ -283,6 +285,20 @@ impl DatabaseState {
             self.selected = len - 1;
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SessionDetail {
+    pub session: crate::data::StoredSession,
+    pub samples: Vec<crate::data::Sample>,
+}
+
+/// Aggregated stats (weekly TSS + power curve + volume) for the Stats screen,
+/// computed once when the screen is first opened.
+#[derive(Default)]
+pub struct StatsState {
+    pub summary: crate::data::StatsSummary,
+    pub loaded: bool,
 }
 
 /// Which rider profile field is being edited in the Settings screen.
@@ -424,6 +440,10 @@ pub struct App {
     /// schedule; `Some(w)` = hold the trainer at a fixed `w` watts
     /// (the "hold" mode, toggled with `e` on the Control panel).
     pub erg_override: Option<u16>,
+    /// Session detail drill-down state (loaded when a session is opened).
+    pub session_detail: Option<SessionDetail>,
+    /// Stats screen aggregates.
+    pub stats: StatsState,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData) -> Self {
@@ -447,6 +467,8 @@ impl App {
             paused_seconds: 0,
             last_workout_name: None,
             erg_override: None,
+            session_detail: None,
+            stats: StatsState::default(),
         }
     }
     pub fn screen(&self) -> Screen {
@@ -754,6 +776,38 @@ impl App {
         self.database.loaded = true;
     }
 
+    /// Open the drill-down view for the currently selected session. Returns
+    /// `false` if there is nothing to show (no selection / no samples).
+    pub fn open_session_detail(&mut self) -> bool {
+        let Some(entry) = self.database.sessions.get(self.database.selected).cloned() else {
+            return false;
+        };
+        let samples = crate::data::init_db(std::path::Path::new("data/olympus.db"))
+            .ok()
+            .and_then(|conn| crate::data::session_samples(&conn, entry.id).ok())
+            .unwrap_or_default();
+        self.session_detail = Some(SessionDetail {
+            session: entry,
+            samples,
+        });
+        self.screen = Screen::SessionDetail;
+        true
+    }
+
+    /// Eagerly (once) compute the Stats screen aggregates.
+    pub fn load_stats(&mut self) {
+        if self.stats.loaded {
+            return;
+        }
+        let ftp = self.userdata.ftp();
+        if let Ok(conn) = crate::data::init_db(std::path::Path::new("data/olympus.db"))
+            && let Ok(summary) = crate::data::compute_stats(&conn, ftp, 8, 50)
+        {
+            self.stats.summary = summary;
+        }
+        self.stats.loaded = true;
+    }
+
     /// Load the currently highlighted workout into the ride and return whether
     /// it succeeded (i.e. the ride can start).
     pub fn start_selected_workout(&mut self) -> bool {
@@ -816,6 +870,7 @@ impl App {
                         Action::Continue
                     }
                     MainSelection::Stats => {
+                        self.load_stats();
                         self.screen = Screen::Stats;
                         Action::Continue
                     }
@@ -861,10 +916,26 @@ impl App {
                     self.start_selected_workout();
                     Action::Continue
                 }
-                DatabaseTab::Sessions => Action::Continue,
+                DatabaseTab::Sessions => {
+                    // Drill down into the selected ride's details + replay.
+                    self.open_session_detail();
+                    Action::Continue
+                }
             },
             KeyCode::Char('m') | KeyCode::Char('M') => {
                 self.screen = Screen::Main;
+                Action::Continue
+            }
+            _ => Action::Continue,
+        }
+    }
+
+    /// Key handling for the session detail drill-down: Esc / Enter / d return
+    /// to the Database list; the global m/c/s shortcuts still work.
+    fn handle_session_detail_key(&mut self, key_code: KeyCode) -> Action {
+        match key_code {
+            KeyCode::Esc | KeyCode::Backspace | KeyCode::Enter => {
+                self.screen = Screen::Database;
                 Action::Continue
             }
             _ => Action::Continue,
@@ -1160,6 +1231,7 @@ impl App {
             Screen::Settings => self.handle_settings_key(key_code),
             Screen::Database => self.handle_database_key(key_code),
             Screen::Control => self.handle_control_key(key_code),
+            Screen::SessionDetail => self.handle_session_detail_key(key_code),
             _ => self.handle_nav_key(key_code),
         }
     }
@@ -1331,6 +1403,59 @@ mod tests {
     #[test]
     fn stats_screen_renders() {
         smoke_render(Screen::Stats, 80, 24);
+    }
+
+    #[test]
+    fn session_detail_screen_renders_empty() {
+        // No detail loaded: the fallback placeholder must still render.
+        smoke_render(Screen::SessionDetail, 80, 24);
+    }
+
+    #[test]
+    fn session_detail_renders_with_samples() {
+        use crate::data::{Sample, StoredSession};
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        let samples: Vec<Sample> = (0..600)
+            .map(|t| Sample {
+                t,
+                power: 200,
+                cadence: 90,
+                heart_rate: 150,
+                speed: 8.33,
+            })
+            .collect();
+        app.session_detail = Some(SessionDetail {
+            session: StoredSession {
+                id: 1,
+                filename: "ride.fit".into(),
+                total_distance: 10.0,
+                total_calories: 300.0,
+                avg_power: 200,
+                max_power: 250,
+                avg_heart_rate: 150,
+                max_heart_rate: 170,
+                ..Default::default()
+            },
+            samples,
+        });
+        app.screen = Screen::SessionDetail;
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::render::draw(frame, &app))
+            .expect("detail screen with chart should render");
+    }
+
+    #[test]
+    fn session_detail_esc_returns_to_database() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.screen = Screen::SessionDetail;
+        assert_eq!(app.handle_key_press(KeyCode::Esc), Action::Continue);
+        assert_eq!(app.screen, Screen::Database);
     }
 
     #[test]

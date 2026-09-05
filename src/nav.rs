@@ -172,7 +172,7 @@ impl Selections {
         match screen {
             Screen::Main => self.main_select.next(),
             Screen::Control => self.control_select.next(),
-            Screen::Database => self.database_select.next(),
+            Screen::Database | Screen::SessionDetail => self.database_select.next(),
             Screen::Settings => self.settings_select.next(),
             Screen::Stats => self.stats_select.next(),
         }
@@ -181,7 +181,7 @@ impl Selections {
         match screen {
             Screen::Main => self.main_select.prev(),
             Screen::Control => self.control_select.prev(),
-            Screen::Database => self.database_select.prev(),
+            Screen::Database | Screen::SessionDetail => self.database_select.prev(),
             Screen::Settings => self.settings_select.prev(),
             Screen::Stats => self.stats_select.prev(),
         }

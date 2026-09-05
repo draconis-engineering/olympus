@@ -324,6 +324,128 @@ pub fn list_sessions(conn: &Connection, limit: usize) -> rusqlite::Result<Vec<St
     rows.collect()
 }
 
+/// Load the per-second samples of one session (for the detail replay chart),
+/// in chronological order.
+pub fn session_samples(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<Sample>> {
+    let mut stmt = conn.prepare(
+        "SELECT t, power, cadence, heart_rate, speed FROM samples \
+         WHERE session_id = ?1 ORDER BY t",
+    )?;
+    let rows = stmt.query_map([session_id], |row| {
+        Ok(Sample {
+            t: row.get(0)?,
+            power: row.get::<_, i64>(1)? as u16,
+            cadence: row.get::<_, i64>(2)? as u16,
+            heart_rate: row.get::<_, i64>(3)? as u16,
+            speed: row.get::<_, f64>(4)? as f32,
+        })
+    })?;
+    rows.collect()
+}
+
+// ---------------------------------------------------------------------------
+// Statistics
+// ---------------------------------------------------------------------------
+
+/// One bar on the weekly Training Stress Score chart.
+#[derive(Debug, Clone, Default)]
+pub struct WeeklyTss {
+    pub label: String,
+    pub tss: f64,
+}
+
+/// Aggregated ride statistics for the Stats screen.
+#[derive(Debug, Clone, Default)]
+pub struct StatsSummary {
+    /// ISO weeks, oldest → newest, capped at the requested window.
+    pub weeks: Vec<WeeklyTss>,
+    /// Best average power over any 1 / 5 / 20 minute rolling window.
+    pub best_1m: u16,
+    pub best_5m: u16,
+    pub best_20m: u16,
+    /// Lifetime volume.
+    pub total_km: f64,
+    pub total_hours: f64,
+}
+
+/// Compute the Stats screen contents from history. TSS is computed per ride
+/// from its samples (NP + duration), then bucketed by ISO week; the power
+/// curve is the best 1m / 5m / 20m rolling mean across all stored rides.
+pub fn compute_stats(
+    conn: &Connection,
+    ftp: u16,
+    num_weeks: usize,
+    max_sessions: usize,
+) -> rusqlite::Result<StatsSummary> {
+    use chrono::{Datelike, Local, NaiveDate};
+
+    let mut out = StatsSummary::default();
+
+    // Buckets run oldest -> newest: the last `num_weeks` ISO weeks ending today.
+    let today = Local::now().date_naive();
+    let buckets: Vec<(String, i32)> = (0..num_weeks)
+        .map(|k| {
+            let d = today - chrono::Duration::days(((num_weeks - 1 - k) as i64) * 7);
+            let w = d.iso_week();
+            (format!("{}w{:02}", w.year(), w.week()), w.year() * 53 + w.week() as i32)
+        })
+        .collect();
+    out.weeks = buckets
+        .iter()
+        .map(|(label, _)| WeeklyTss {
+            label: label.clone(),
+            tss: 0.0,
+        })
+        .collect();
+
+    let mut sessions = conn.prepare(
+        "SELECT id, recorded_at, total_distance FROM fit_sessions \
+         ORDER BY id DESC LIMIT ?1",
+    )?;
+    let rows = sessions.query_map([max_sessions as i64], |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, f64>(2)?))
+    })?;
+
+    let mut power_stmt = conn.prepare("SELECT power FROM samples WHERE session_id = ?1 ORDER BY t")?;
+
+    let mut total_secs: f64 = 0.0;
+    for row in rows.flatten() {
+        let (id, recorded_at, dist) = row;
+
+        let powers: Vec<u16> = power_stmt
+            .query_map([id], |r| r.get::<_, i64>(0).map(|v| v as u16))?
+            .filter_map(|p| p.ok())
+            .collect();
+
+        // Volume.
+        out.total_km += dist;
+        total_secs += powers.len() as f64;
+
+        // Power curve (best rolling average per window).
+        out.best_1m = out.best_1m.max(crate::math::best_rolling_mean(&powers, 60));
+        out.best_5m = out.best_5m.max(crate::math::best_rolling_mean(&powers, 300));
+        out.best_20m = out.best_20m.max(crate::math::best_rolling_mean(&powers, 1200));
+
+        // TSS from NP + ride duration, then bucket by ISO week.
+        if !powers.is_empty()
+            && let Ok(date) = NaiveDate::parse_from_str(&recorded_at[..10], "%Y-%m-%d")
+            && let Some(idx) = buckets.iter().position(|(_, b)| {
+                let w = date.iso_week();
+                *b == w.year() * 53 + w.week() as i32
+            })
+        {
+            let raw: Vec<u64> = powers.iter().map(|&p| p as u64).collect();
+            let np = crate::math::normalized_power(&raw, 1.0);
+            let ifac = crate::math::intensity_factor(np, ftp as f64);
+            let tss = crate::math::tss(np, ifac, ftp as f64, powers.len() as f64);
+            out.weeks[idx].tss += tss;
+        }
+    }
+
+    out.total_hours = total_secs / 3600.0;
+    Ok(out)
+}
+
 /// Directory that stores the rider's workout files.
 pub const WORKOUTS_DIR: &str = "data/workouts";
 
@@ -365,4 +487,85 @@ pub fn list_workout_files() -> Vec<WorkoutEntry> {
     // Deterministic ordering keeps the cursor stable between redraws.
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     entries
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_conn() -> (tempfile::TempDir, Connection) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.db");
+        let conn = init_db(&path).unwrap();
+        (dir, conn)
+    }
+
+    fn farey_ride(conn: &Connection, power: u16) -> i64 {
+        let session = FitSession {
+            total_distance: 10.0,
+            total_calories: 300.0,
+            avg_power: power,
+            max_power: power,
+            ..Default::default()
+        };
+        let samples: Vec<Sample> = (0..60)
+            .map(|t| Sample {
+                t,
+                power,
+                cadence: 90,
+                heart_rate: 150,
+                speed: 8.33,
+            })
+            .collect();
+        save_ride(conn, &session, "ride.fit", &samples).unwrap()
+    }
+
+    #[test]
+    fn session_samples_round_trip_in_order() {
+        let (_dir, conn) = test_conn();
+        let id = farey_ride(&conn, 200);
+        let samples = session_samples(&conn, id).unwrap();
+        assert_eq!(samples.len(), 60);
+        // Chronological: ensure t is strictly increasing.
+        assert_eq!(samples[0].t, 0);
+        assert_eq!(samples[59].t, 59);
+        assert!(samples.windows(2).all(|w| w[0].t < w[1].t));
+        assert!(samples.iter().all(|s| s.power == 200));
+    }
+
+    #[test]
+    fn session_samples_unknown_id_is_empty() {
+        let (_dir, conn) = test_conn();
+        assert!(session_samples(&conn, 999).unwrap().is_empty());
+    }
+
+    #[test]
+    fn compute_stats_aggregates_pr_and_volume() {
+        let (_dir, conn) = test_conn();
+        // Two rides: one at 200 W for 60s, one at 300 W for 60s.
+        farey_ride(&conn, 200);
+        farey_ride(&conn, 300);
+        let stats = compute_stats(&conn, 200, 8, 50).unwrap();
+        // Volume: 2 x 10 km, 2 x 60 s.
+        assert!((stats.total_km - 20.0).abs() < 0.001);
+        assert!((stats.total_hours - 120.0 / 3600.0).abs() < 0.001);
+        // PR 1m is the max of the two (300 W ride).
+        assert_eq!(stats.best_1m, 300);
+        // <5 min of data -> no 5m/20m PR.
+        assert_eq!(stats.best_5m, 0);
+        assert_eq!(stats.best_20m, 0);
+        // Week buckets: exactly 8 labels, oldest->newest.
+        assert_eq!(stats.weeks.len(), 8);
+        // TSS landed in the current week bucket (non-zero).
+        assert!(stats.weeks.iter().any(|w| w.tss > 0.0));
+    }
+
+    #[test]
+    fn compute_stats_empty_db_has_zero_volume() {
+        let (_dir, conn) = test_conn();
+        let stats = compute_stats(&conn, 200, 8, 50).unwrap();
+        assert_eq!(stats.weeks.len(), 8);
+        assert_eq!(stats.total_km, 0.0);
+        assert_eq!(stats.best_1m, 0);
+    }
 }

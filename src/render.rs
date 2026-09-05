@@ -228,6 +228,8 @@ fn footer(current: Screen, app: &App) -> Paragraph<'_> {
         Screen::Database => current_page = dbspan,
         Screen::Settings => current_page = setspan,
         Screen::Stats => current_page = statsspan,
+        // A session drill-down is still "inside" the Database screen.
+        Screen::SessionDetail => current_page = dbspan,
     }
 
     let footerspan = vec![current_page, sep.clone(), userspan, sep.clone()];
@@ -1417,10 +1419,197 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
 
 // -------------------------------------------------------
 
+fn session_detail_draw(frame: &mut Frame, main_area: Rect, app: &App) {
+    let dark_gray = Style::default().fg(Color::DarkGray);
+    let white = Style::default().fg(Color::White);
+    let cyan = Style::default().fg(Color::Cyan);
+    let yellow = Style::default().fg(Color::Yellow);
+
+    let Some(detail) = app.session_detail.as_ref() else {
+        frame.render_widget(
+            Paragraph::new("No session selected.").block(Block::default().borders(Borders::ALL)),
+            main_area,
+        );
+        return;
+    };
+    let s = &detail.session;
+
+    // Left: summary table. Right/bottom: power replay chart.
+    let [summary_area, chart_area] = Layout::vertical([
+        Constraint::Percentage(40),
+        Constraint::Percentage(60),
+    ])
+    .areas(main_area);
+
+    let row = |label: &str, value: String| {
+        Line::from(vec![
+            Span::styled(format!("{label:<16}"), dark_gray),
+            Span::styled(value, white),
+        ])
+    };
+
+    let summary = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled(" Session ", cyan.add_modifier(Modifier::BOLD)),
+            Span::styled(s.recorded_at.clone(), dark_gray),
+        ]),
+        Line::from(Span::styled(
+            format!("  {}", s.filename),
+            dark_gray,
+        )),
+        Line::from(""),
+        row("Distance", format!("{:.2} km", s.total_distance)),
+        row("Calories", format!("{:.0} kcal", s.total_calories)),
+        row("Avg Power", format!("{} W", s.avg_power)),
+        row("Max Power", format!("{} W", s.max_power)),
+        row("Avg HR", format!("{} bpm", s.avg_heart_rate)),
+        row("Max HR", format!("{} bpm", s.max_heart_rate)),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("[Esc]", yellow),
+            Span::styled(" back to sessions", dark_gray),
+        ]),
+    ])
+    .block(Block::default().borders(Borders::ALL).title(" Summary "));
+
+    frame.render_widget(summary, summary_area);
+
+    // Power(t) replay from the per-second samples.
+    let points: Vec<(f64, f64)> = detail
+        .samples
+        .iter()
+        .enumerate()
+        .map(|(i, smp)| (i as f64, smp.power as f64))
+        .collect();
+    let chart_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Power (W) — replay ");
+    if points.is_empty() {
+        frame.render_widget(
+            Paragraph::new("  No per-second samples stored for this ride.")
+                .block(chart_block),
+            chart_area,
+        );
+        return;
+    }
+    let max_y = (points.iter().map(|(_, y)| *y).fold(0.0, f64::max) * 1.2).max(100.0);
+    let chart = line_chart(&points, Color::Cyan, max_y).block(chart_block);
+    frame.render_widget(chart, chart_area);
+}
+
 fn stats_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     let _selected = app.selections().stats();
-    let content = Paragraph::new(format!("Stats\n------\n"));
-    frame.render_widget(content, main_area);
+    let dark_gray = Style::default().fg(Color::DarkGray);
+    let white = Style::default().fg(Color::White);
+    let gray = Style::default().fg(Color::Gray);
+    let yellow = Style::default().fg(Color::Yellow);
+    let cyan = Style::default().fg(Color::Cyan);
+
+    let summary: &crate::data::StatsSummary = &app.stats.summary;
+
+    let [bar_area, pr_area, vol_area] = Layout::vertical([
+        Constraint::Percentage(45),
+        Constraint::Percentage(25),
+        Constraint::Percentage(30),
+    ])
+    .areas(main_area);
+
+    // --- Weekly TSS bars (last 8 weeks, oldest -> newest) ---
+    let max_tss = summary
+        .weeks
+        .iter()
+        .map(|w| w.tss)
+        .fold(0.0, f64::max)
+        .max(1.0);
+    let bar_w = bar_area.width.max(1) as usize;
+    let mut bar_lines = vec![Line::from(vec![
+        Span::styled(" Training Stress Score ", cyan.add_modifier(Modifier::BOLD)),
+        Span::styled("(last 8 weeks)", dark_gray),
+    ])];
+    for w in &summary.weeks {
+        let width = ((w.tss / max_tss) * (bar_w as f64 - 10.0)).round().max(1.0) as usize;
+        let bar: String = "█".repeat(width.min(bar_w.saturating_sub(10).max(1)));
+        bar_lines.push(Line::from(vec![
+            Span::styled(format!("{:<6} ", w.label), gray),
+            Span::styled(bar, Style::default().fg(Color::Green)),
+            Span::styled(format!(" {:>4.0}", w.tss), dark_gray),
+        ]));
+    }
+    frame.render_widget(
+        Paragraph::new(bar_lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" TSS ")
+                .fg(Color::DarkGray),
+        ),
+        bar_area,
+    );
+
+    // --- Power curve: best 1m / 5m / 20m average ---
+    let pr_span = |v: u16| {
+        if v > 0 {
+            Span::styled(format!("{v:>6} W"), Color::Cyan)
+        } else {
+            Span::styled(format!("{v:>6} W"), Color::DarkGray)
+        }
+    };
+    let pr_line = Line::from(vec![
+        Span::styled("Best 1m  ", dark_gray),
+        pr_span(summary.best_1m),
+        Span::styled("   Best 5m  ", dark_gray),
+        pr_span(summary.best_5m),
+        Span::styled("   Best 20m ", dark_gray),
+        pr_span(summary.best_20m),
+    ]);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                " Power Curve (PR) ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            pr_line,
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("[d]", yellow),
+                Span::styled(" main menu", gray),
+            ]),
+        ])
+        .block(Block::default().borders(Borders::ALL).title(" Stats ")),
+        pr_area,
+    );
+
+    // --- Volume: total km + hours ---
+    let vol_lines = vec![
+        Line::from(vec![
+            Span::styled(" Total time  ", dark_gray),
+            Span::styled(format!(
+                "{:>6.2} h",
+                summary.total_hours
+            ), white),
+        ]),
+        Line::from(vec![
+            Span::styled(" Total dist  ", dark_gray),
+            Span::styled(format!("{:>6.2} km", summary.total_km), white),
+        ]),
+        Line::from(vec![
+            Span::styled(" Volume      ", dark_gray),
+            Span::styled(
+                format!("{:.2} km/h", summary.total_km / summary.total_hours.max(0.001)),
+                white,
+            ),
+        ]),
+    ];
+    frame.render_widget(
+        Paragraph::new(vol_lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Volume ")
+                .fg(Color::DarkGray),
+        ),
+        vol_area,
+    );
 }
 
 // ====================================
@@ -1451,6 +1640,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Screen::Database => database_draw(frame, main_area, app),
         Screen::Settings => settings_draw(frame, main_area, app),
         Screen::Stats => stats_draw(frame, main_area, app),
+        Screen::SessionDetail => session_detail_draw(frame, main_area, app),
     };
 
     // Overlays (rendered on top of everything).

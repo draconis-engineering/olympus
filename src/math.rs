@@ -147,6 +147,24 @@ pub fn distance_km(speed_kmh: f64, dt_s: f64) -> f64 {
     speed_kmh * dt_s / 3600.0
 }
 
+/// Best (max) average power over any `window`-second rolling slice.
+///
+/// This is the classic `1m/5m/20m` power-curve computation. Returns `0` when
+/// the ride is shorter than `window` seconds (not enough data for that PR).
+pub fn best_rolling_mean(powers: &[u16], window: usize) -> u16 {
+    let n = powers.len();
+    if n < window || window == 0 {
+        return 0;
+    }
+    let mut sum: u32 = powers[..window].iter().map(|&v| v as u32).sum();
+    let mut best = sum;
+    for i in window..n {
+        sum += powers[i] as u32 - powers[i - window] as u32;
+        best = best.max(sum);
+    }
+    (best / window as u32) as u16
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,6 +180,26 @@ mod tests {
     #[test]
     fn np_ignores_empty() {
         assert_eq!(normalized_power(&[], 1.0), 0.0);
+    }
+
+    #[test]
+    fn best_rolling_mean_finds_max_window() {
+        // [100, 200, 300, 400] -> 2s best is (300+400)/2 = 350.
+        let powers = [100u16, 200, 300, 400];
+        assert_eq!(best_rolling_mean(&powers, 2), 350);
+        assert_eq!(best_rolling_mean(&powers, 1), 400);
+        // 5s window needs 5 samples; too short -> 0 (no PR yet).
+        assert_eq!(best_rolling_mean(&powers, 5), 0);
+        assert_eq!(best_rolling_mean(&powers, 0), 0);
+        assert_eq!(best_rolling_mean(&[], 60), 0);
+    }
+
+    #[test]
+    fn best_rolling_mean_constant_ride_is_flat() {
+        let powers = vec![200u16; 600];
+        assert_eq!(best_rolling_mean(&powers, 60), 200);
+        assert_eq!(best_rolling_mean(&powers, 300), 200);
+        assert_eq!(best_rolling_mean(&powers, 1200), 0);
     }
 
     #[test]

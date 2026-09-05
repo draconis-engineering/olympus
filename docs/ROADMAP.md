@@ -64,8 +64,8 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 
 ### Phase 3 — History & Stats (minimal, 2–3 days)
 
-- [ ] `Database Sessions Enter` `src/app.rs:864` → detail screen (`Screen::Stats` reuse or new `SessionDetail` `src/app.rs:154`) showing `FitSession` fields + Braille `power(t)` vs `target(t)` replay from `samples` `SELECT t,power FROM samples WHERE session_id=? ORDER BY t` `src/data.rs:285` via `line_chart()` `src/render.rs:41`
-- [ ] `src/render.rs:1399 stats_draw` replace stub: **weekly TSS bars (last 8 weeks)**, **PR curve `1m/5m/20m`** scanning `samples` (`max(power) WHERE t window`), **volume km/h** — all from `fit_sessions+samples` indexed `samples.session_id` `src/data.rs:185`. No seasons/interval adherence until post-1.0.
+- [x] `Database Sessions Enter` `src/app.rs:864` → detail screen (`Screen::Stats` reuse or new `SessionDetail` `src/app.rs:154`) showing `FitSession` fields + Braille `power(t)` vs `target(t)` replay from `samples` `SELECT t,power FROM samples WHERE session_id=? ORDER BY t` `src/data.rs:285` via `line_chart()` `src/render.rs:41`
+- [x] `src/render.rs:1399 stats_draw` replace stub: **weekly TSS bars (last 8 weeks)**, **PR curve `1m/5m/20m`** scanning `samples` (`max(power) WHERE t window`), **volume km/h** — all from `fit_sessions+samples` indexed `samples.session_id` `src/data.rs:185`. No seasons/interval adherence until post-1.0.
 
 ### Phase 4 — Content & FTP (2 days)
 

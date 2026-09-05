@@ -252,6 +252,8 @@ async fn main() -> io::Result<()> {
             finish_ride(&app, &mut fit, &mut samples, save);
             // The session history changed; force the Database tab to rescan.
             app.database.loaded = false;
+            // Stats aggregates changed too; recompute on next visit.
+            app.stats.loaded = false;
         }
 
         // One-second metronome: advance the ride clock and update metrics.
