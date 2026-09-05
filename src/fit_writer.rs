@@ -194,6 +194,32 @@ impl FitWriter {
         }
     }
 
+    /// The SESSION summary message, carrying per-ride totals. `fit_start`
+    /// is the FIT-relative (epoch-offset) start timestamp.
+    fn session_message(&self, fit_start: u32) -> FitMessage {
+        let (avg_speed, avg_hr, max_hr, avg_pwr, max_pwr, dist100, cal, total_ms) =
+            self.session_summary();
+
+        FitMessage {
+            global: 18, // SESSION
+            local: 2,
+            fields: vec![
+                FitField::uint32(253, fit_start), // timestamp (end)
+                FitField::uint32(0, fit_start),   // start_time
+                FitField::uint32(2, total_ms),    // total_elapsed_time (ms)
+                FitField::uint32(3, total_ms),    // total_timer_time (ms)
+                FitField::uint32(4, dist100),     // total_distance (m*100)
+                FitField::uint16(6, cal),         // total_calories
+                FitField::uint16(7, avg_speed),   // avg_speed (m/s*1000)
+                FitField::enum_(55, 2),           // sport = cycling
+                FitField::uint8(9, avg_hr),       // avg_heart_rate
+                FitField::uint8(10, max_hr),      // max_heart_rate
+                FitField::uint16(13, avg_pwr),    // avg_power
+                FitField::uint16(14, max_pwr),    // max_power
+            ],
+        }
+    }
+
     /// Build the full FIT byte stream.
     fn encode(&self) -> Vec<u8> {
         // The session start timestamp comes from the first recorded sample
@@ -222,27 +248,6 @@ impl FitWriter {
         // Definition is emitted once; each sample becomes a data row.
 
         // --- Session message (local 2) ---
-        let (avg_speed, avg_hr, max_hr, avg_pwr, max_pwr, dist100, _cal, total_ms) =
-            self.session_summary();
-
-        let session = FitMessage {
-            global: 18, // SESSION
-            local: 2,
-            fields: vec![
-                FitField::uint32(253, fit_start as u32), // timestamp (end)
-                FitField::uint32(0, fit_start as u32),   // start_time
-                FitField::uint32(2, total_ms),           // total_elapsed_time (ms)
-                FitField::uint32(3, total_ms),           // total_timer_time (ms)
-                FitField::uint32(4, dist100),            // total_distance (m*100)
-                FitField::uint16(6, 0),                  // total_calories
-                FitField::uint16(7, avg_speed),          // avg_speed (m/s*1000)
-                FitField::enum_(55, 2),                  // sport = cycling
-                FitField::uint8(9, avg_hr),              // avg_heart_rate
-                FitField::uint8(10, max_hr),             // max_heart_rate
-                FitField::uint16(13, avg_pwr),           // avg_power
-                FitField::uint16(14, max_pwr),           // max_power
-            ],
-        };
 
         // Serialize into a data buffer.
         let mut data: Vec<u8> = Vec::new();
@@ -280,6 +285,7 @@ impl FitWriter {
             };
             data.extend(new_record.encode_data());
         }
+        let session = self.session_message(fit_start as u32);
         data.extend(session.encode_definition());
         data.extend(session.encode_data());
 
@@ -396,6 +402,33 @@ mod tests {
             .iter()
             .any(|m| m.kind().as_u16() >> 8 == 18);
         assert!(has_session, "activity has a SESSION message");
+    }
+
+    #[test]
+    fn session_message_wires_computed_calories() {
+        let mut w = FitWriter::new();
+        let base = w.start_time;
+        // 10 minutes at 200 W, sampled once per second.
+        for i in 0..600 {
+            w.push(RecordSample {
+                timestamp: base + i,
+                power: 200,
+                cadence: 90,
+                heart_rate: 150,
+                speed_mps: 8.33,
+                distance_m: i as f32 * 8.33,
+            });
+        }
+        let fit_start = (base - FIT_EPOCH_OFFSET) as u32;
+        let msg = w.session_message(fit_start);
+        let cal = msg
+            .fields
+            .iter()
+            .find(|f| f.num == 6)
+            .map(|f| f.value.as_slice())
+            .unwrap();
+        // 200 W × 600 s / 1000 = 120 kcal (1 kJ ≈ 1 kcal); u16 little-endian.
+        assert_eq!(cal, &[120, 0]);
     }
 
     #[test]

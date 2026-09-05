@@ -165,6 +165,8 @@ pub enum Screen {
 pub enum Action {
     Continue,
     Quit,
+    /// Ask the BLE driver to disconnect and re-scan for a trainer.
+    Scan,
 }
 
 /// Lifecycle state of the current ride session.
@@ -470,6 +472,11 @@ impl App {
     }
 
     pub fn version(&self) -> &str {
+        Self::version_static()
+    }
+
+    /// The Olympus release version string.
+    pub fn version_static() -> &'static str {
         "0.1.5"
     }
     pub fn user(&self) -> &str {
@@ -565,16 +572,6 @@ impl App {
             self.last_workout_name = workout_name;
         }
     }
-
-    /// True while the workout loading overlay should be shown. In the real
-    /// engine this is only true between loading a workout and being ready, so
-    /// here it just reflects "a ride is being started and hasn't shown yet".
-    pub fn is_loading(&self) -> bool {
-        false
-    }
-
-    /// Called each frame by the main loop; retained for compatibility.
-    pub fn poll_loading(&mut self) {}
 
     /// Capacity of the rolling power history buffer (samples).
     pub const fn _power_history_capacity(&self) -> usize {
@@ -859,8 +856,8 @@ impl App {
             }
             KeyCode::Enter => match self.database.tab {
                 DatabaseTab::Workouts => {
-                    // Start the highlighted workout: the loading overlay shows,
-                    // then `poll_loading` moves us into the Control panel.
+                    // Start the highlighted workout and move into the Control
+                    // panel to ride it.
                     self.start_selected_workout();
                     Action::Continue
                 }
@@ -888,6 +885,10 @@ impl App {
                 KeyCode::Down => {
                     self.selections.next(self.screen);
                     Action::Continue
+                }
+                // Re-scan for a trainer from the Bluetooth panel.
+                KeyCode::Enter if *self.selections.settings() == SettingsSelection::Bluetooth => {
+                    Action::Scan
                 }
                 _ => Action::Continue,
             };
@@ -1299,6 +1300,32 @@ mod tests {
     #[test]
     fn settings_screen_renders() {
         smoke_render(Screen::Settings, 80, 24);
+    }
+
+    #[test]
+    fn settings_bluetooth_enter_emits_scan() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Char('s')); // to Settings
+        // General -> Appearance -> Bluetooth
+        app.handle_key_press(KeyCode::Down);
+        app.handle_key_press(KeyCode::Down);
+        assert_eq!(
+            *app.selections.settings(),
+            crate::nav::SettingsSelection::Bluetooth
+        );
+        assert_eq!(app.handle_key_press(KeyCode::Enter), Action::Scan);
+        // Still on the Bluetooth panel afterwards (no navigation change).
+        assert_eq!(
+            *app.selections.settings(),
+            crate::nav::SettingsSelection::Bluetooth
+        );
+    }
+
+    #[test]
+    fn settings_non_bluetooth_enter_is_continue() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Char('s')); // to Settings (General panel)
+        assert_eq!(app.handle_key_press(KeyCode::Enter), Action::Continue);
     }
 
     #[test]

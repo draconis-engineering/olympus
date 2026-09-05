@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 
 /// Build the loaded workout (if any) from a CLI-supplied path, or `None`.
 fn resolve_workout(ftp: u16) -> Option<erg::Workout> {
+    // `--help` / `--version` are handled before we get here.
     let arg = std::env::args().nth(1)?;
     let path = std::path::Path::new(&arg);
     if arg.ends_with(".erg") {
@@ -45,6 +46,32 @@ fn resolve_workout(ftp: u16) -> Option<erg::Workout> {
         }
     } else {
         None
+    }
+}
+
+/// Handle `--help` / `--version`. Returns `true` when the program should exit
+/// immediately after printing (the TUI is not started).
+fn handle_cli_args() -> bool {
+    let mut args = std::env::args().skip(1);
+    let Some(arg) = args.next() else {
+        return false;
+    };
+    match arg.as_str() {
+        "--help" | "-h" => {
+            println!(
+                "Olympus {} - a terminal cycling trainer\n\n\
+                 USAGE:\n    olympus [OPTIONS] [WORKOUT]\n\n\
+                 ARGS:\n    WORKOUT    Optional path to a .erg or .zwo workout file\n\n\
+                 OPTIONS:\n    -h, --help       Print this help message\n    -V, --version    Print version information",
+                app::App::version_static()
+            );
+            true
+        }
+        "--version" | "-V" => {
+            println!("olympus {}", app::App::version_static());
+            true
+        }
+        _ => false,
     }
 }
 
@@ -98,6 +125,11 @@ async fn main() -> io::Result<()> {
     // silent (e.g. FIT write failures, BLE scan problems).
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .try_init();
+
+    // `--help` / `--version` print and exit without entering the TUI.
+    if handle_cli_args() {
+        std::process::exit(0);
+    }
 
     // Ensure the standard data directories exist so a fresh install has
     // somewhere for FIT files, the SQLite DB and bundled workouts.
@@ -168,8 +200,6 @@ async fn main() -> io::Result<()> {
 
     loop {
         let frame_start = Instant::now();
-        // No-op for compatibility (the ride engine tracks readiness).
-        app.poll_loading();
         terminal.draw(|frame| draw(frame, &app))?;
 
         // Drain trainer connection-state changes into the app for display.
@@ -204,8 +234,14 @@ async fn main() -> io::Result<()> {
         // Handle user input.
         if let Ok(key) = key_rx.try_recv() {
             if key.kind == KeyEventKind::Press {
-                if app.handle_key_press(key.code) == Action::Quit {
-                    break;
+                match app.handle_key_press(key.code) {
+                    Action::Quit => break,
+                    // Settings → Bluetooth → Enter: tell the driver to drop the
+                    // current trainer and scan for a new one.
+                    Action::Scan => {
+                        let _ = cmd_tx.send(ble::BleCommand::Scan).await;
+                    }
+                    Action::Continue => {}
                 }
             }
         }

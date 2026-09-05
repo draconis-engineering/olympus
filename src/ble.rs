@@ -213,6 +213,11 @@ async fn driver_loop(
     // Shared crank state so cadence can be derived across notifications.
     let crank = CrankTracker::new();
 
+    // The last target power actually commanded to the trainer, so we only
+    // ramp when the ERG target *changes* (the UI re-sends the target every
+    // second, and re-ramping a static target would never converge).
+    let mut last_written: Option<u16> = None;
+
     loop {
         tokio::select! {
             // Incoming data notifications from the trainer.
@@ -229,8 +234,14 @@ async fn driver_loop(
             cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(BleCommand::SetTargetPower(w)) => {
-                        if let Err(e) = set_target_power(&peripheral, &subscriptions, w).await {
-                            state_send(BleState::Error(format!("ERG failed: {e}")));
+                        // Dedupe: if the target is unchanged, the previous
+                        // ramp (if any) already delivered it.
+                        if last_written == Some(w) {
+                            continue;
+                        }
+                        match ramp_target(&peripheral, &subscriptions, last_written, w).await {
+                            Ok(()) => last_written = Some(w),
+                            Err(e) => state_send(BleState::Error(format!("ERG failed: {e}"))),
                         }
                     }
                     Some(BleCommand::Disconnect) => {
@@ -482,6 +493,40 @@ async fn set_target_power(
         .map_err(|e| format!("FTMS write failed: {e}"))
 }
 
+/// A linear ERG ramp from `from` to `to`, split into `n` evenly-spaced
+/// intermediate commands with the final `to` included last. Returns just
+/// `[to]` when the values are already equal.
+fn ramp_steps(from: u16, to: u16, n: u32) -> Vec<u16> {
+    if from == to || n == 0 {
+        return vec![to];
+    }
+    let delta = (to as f32 - from as f32) / n as f32;
+    (1..=n)
+        .map(|i| (from as f32 + delta * i as f32).round().clamp(0.0, u16::MAX as f32) as u16)
+        .collect()
+}
+
+/// Command the target gradually so a Flux-style trainer doesn't jolt toward a
+/// big wattage jump. On the first-ever command (`from` is `None`) the target is
+/// written directly; afterwards we step over ~2.5 s in 100 ms increments.
+async fn ramp_target(
+    peripheral: &Peripheral,
+    subscriptions: &[Characteristic],
+    from: Option<u16>,
+    to: u16,
+) -> Result<(), String> {
+    let Some(start) = from else {
+        return set_target_power(peripheral, subscriptions, to).await;
+    };
+
+    // ~2.5 s ramp at 100 ms per step.
+    for w in ramp_steps(start, to, 25) {
+        set_target_power(peripheral, subscriptions, w).await?;
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    Ok(())
+}
+
 /// When no trainer is discoverable we emit gentle simulated data so the UI
 /// stays responsive and the graphs keep moving. Uses slight random variance
 /// so it looks alive.
@@ -552,5 +597,30 @@ mod tests {
             let v = rng.gen_range(-6..=6);
             assert!(v >= -6 && v <= 6);
         }
+    }
+
+    #[test]
+    fn ramp_steps_is_monotonic_and_bounded() {
+        // A big 300 W jump ramps upward and lands exactly on the target.
+        let steps = ramp_steps(100, 400, 25);
+        assert_eq!(steps.len(), 25);
+        assert_eq!(*steps.last().unwrap(), 400);
+        assert!(steps.windows(2).all(|w| w[0] <= w[1]),
+            "ramp must be non-decreasing: {steps:?}");
+
+        // Ramping down never undershoots below the floor.
+        let down = ramp_steps(400, 50, 25);
+        assert_eq!(*down.last().unwrap(), 50);
+        assert!(down.windows(2).all(|w| w[0] >= w[1]));
+
+        // No-op when the target is unchanged.
+        assert_eq!(ramp_steps(200, 200, 25), vec![200]);
+    }
+
+    #[test]
+    fn ramp_steps_tiny_nudge_reaches_goal() {
+        // A 5 W nudge still converges to the new target over the step count.
+        let steps = ramp_steps(200, 205, 25);
+        assert_eq!(*steps.last().unwrap(), 205);
     }
 }

@@ -58,8 +58,8 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 
 ### Phase 2 — Trainer Pairing Robustness (2 days)
 
-- [ ] `Settings → Bluetooth` `Enter → BleCommand::Scan` `src/ble.rs:91` (today static `src/render.rs:1160`)
-- [ ] Control footer error banner when `BleState::Error` `src/ble.rs:103` + `Simulated` yellow watermark `src/render.rs:926` already — add qualifier `(simulated — no trainer)` `1283`
+- [x] `Settings → Bluetooth` `Enter → BleCommand::Scan` `src/ble.rs:91` (today static `src/render.rs:1160`)
+- [x] Control footer error banner when `BleState::Error` `src/ble.rs:103` + `Simulated` yellow watermark `src/render.rs:926` already — add qualifier `(simulated — no trainer)` `1283`
 - [ ] *(deferred from 1.0 — see below)* second `HRM 0x2A37` peripheral merge for chest strap — keep single-peripheral `find_trainer()` `264` for 1.0; document as 1.1.
 
 ### Phase 3 — History & Stats (minimal, 2–3 days)

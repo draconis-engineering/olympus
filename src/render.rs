@@ -73,50 +73,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     horiz[1]
 }
 
-/// Draw the "loading workout" splash overlay over the whole screen.
-fn render_loading(frame: &mut Frame, area: Rect) {
-    let popup = centered_rect(46, 30, area);
-    frame.render_widget(Clear, popup);
-    let lines = vec![
-        Line::from(Span::styled(
-            " OLYMPUS ",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .alignment(Alignment::Center),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Loading workout...",
-            Style::default().fg(Color::Gray),
-        ))
-        .alignment(Alignment::Center),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Connecting trainer & setting ERG targets",
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center),
-        Line::from(""),
-        Line::from(Span::styled(
-            "█▒▒▒▒▒▒▒▒",
-            Style::default().fg(Color::Yellow),
-        ))
-        .alignment(Alignment::Center),
-    ];
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(Color::Cyan)),
-            )
-            .alignment(Alignment::Center),
-        popup,
-    );
-}
-
 /// Draw the "are you sure you want to quit?" confirmation dialog.
 fn render_confirm_quit(frame: &mut Frame, area: Rect) {
     let popup = centered_rect(44, 26, area);
@@ -939,6 +895,14 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 format!("  [{}]", conn_state.label()),
                 Style::default().fg(conn_style).add_modifier(Modifier::BOLD),
             ),
+            if conn_state == BleUiState::Simulated {
+                Span::styled(
+                    " (simulated — no trainer)",
+                    Style::default().fg(Color::DarkGray),
+                )
+            } else {
+                Span::raw("")
+            },
         ]),
         Line::from(vec![
             Span::styled("UPTIME    ", Style::default().fg(Color::DarkGray)),
@@ -997,6 +961,27 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
         Paragraph::new(hint_line).alignment(Alignment::Center),
         hint_area,
     );
+
+    // Footer error banner: surfaces BLE/ERG failures on the control panel so
+    // a lost trainer is never silently ignored mid-ride.
+    if let (_, BleUiState::Error(e)) = app.connection() {
+        let [_, _, _, banner_area] = Layout::vertical([
+            Constraint::Min(0),
+            Constraint::Min(0),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .areas(area);
+        let banner = Line::from(Span::styled(
+            format!("⚠ {e}"),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(
+            Paragraph::new(banner).bg(Color::Red).fg(Color::White),
+            banner_area,
+        );
+    }
 
     // Paused banner — centered over the control panel when ride is paused.
     if app.ride == RideState::Paused {
@@ -1329,12 +1314,24 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Line::from(vec![
                     Span::styled("Status:  ", Style::default().fg(Color::DarkGray)),
                     Span::styled(state_label, Style::default().fg(state_color)),
+                    if state == BleUiState::Simulated {
+                        Span::styled(
+                            " (simulated — no trainer)",
+                            Style::default().fg(Color::DarkGray),
+                        )
+                    } else {
+                        Span::raw("")
+                    },
                 ]),
             ];
             if !detail.is_empty() {
                 lines.push(Line::from(Span::styled(detail, Color::Red)));
             }
             lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("Enter ", Style::default().fg(Color::Yellow)),
+                Span::styled("to re-scan for a trainer", Color::DarkGray),
+            ]));
             lines.push(Line::from(Span::styled(
                 "The Tacx Flux S2 connects via FTMS (Fitness Machine Service).",
                 Color::DarkGray,
@@ -1462,7 +1459,5 @@ pub fn draw(frame: &mut Frame, app: &App) {
         render_summary(frame, app, full);
     } else if app.confirm_quit {
         render_confirm_quit(frame, full);
-    } else if app.is_loading() {
-        render_loading(frame, full);
     }
 }
