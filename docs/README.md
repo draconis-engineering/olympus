@@ -1,6 +1,6 @@
 # OLYMPUS - TUI Cycling Trainer App (Minimalist Zwift/Rouvy Replacement)
 
-Olympus is a minimalist, high-performance **TUI** for indoor cycling. The application connects directly to smart trainers and fitness sensors via **BLE** (Tacx Flux S2 via FTMS), renders real-time telemetry with high-res terminal graphics, schedules `.erg`/`.zwo` workouts, and writes Garmin-valid `.fit` files — no subscription, no cloud.
+Olympus is a minimalist, high-performance **TUI** for indoor cycling. The application connects directly to smart trainers and fitness sensors via **BLE**, renders real-time telemetry with high-res terminal graphics, schedules `.erg`/`.zwo` workouts, and writes Garmin-valid `.fit` files — no subscription, no cloud.
 
 [![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/) [![Roadmap](https://img.shields.io/badge/Roadmap-v1.0-blue)](../ROADMAP.md)
 
