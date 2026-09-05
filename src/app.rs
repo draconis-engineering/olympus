@@ -418,6 +418,10 @@ pub struct App {
     /// Name of the workout that produced the just-finished ride (for the
     /// saved-file banner).
     pub last_workout_name: Option<String>,
+    /// Manual ERG override: `None` = follow the loaded workout's ERG
+    /// schedule; `Some(w)` = hold the trainer at a fixed `w` watts
+    /// (the "hold" mode, toggled with `e` on the Control panel).
+    pub erg_override: Option<u16>,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData) -> Self {
@@ -440,6 +444,7 @@ impl App {
             pending_save: None,
             paused_seconds: 0,
             last_workout_name: None,
+            erg_override: None,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -515,6 +520,7 @@ impl App {
         self.vel_history.clear();
         self.paused_seconds = 0;
         self.pending_save = None;
+        self.erg_override = None;
     }
 
     /// Move to the Control panel, starting a fresh ride if none is active.
@@ -705,28 +711,25 @@ impl App {
 
     /// Advances the elapsed ride clock by one second and, if a workout is
     /// active, resolves the new target power for the current interval. When
-    /// the ride is paused (or the summary is showing) the clock is frozen.
+    /// the ride is paused the clock is frozen but the paused duration is
+    /// still accrued (so TSS/distance denominators can exclude it).
     pub fn tick_second(&mut self) -> u16 {
         if !self.is_recording() {
+            if self.ride == RideState::Paused {
+                self.paused_seconds += 1;
+            }
             return self.livedata.target_pwr;
         }
 
         self.livedata.elapsed_secs += 1;
-        let target = match &self.workout {
-            Some(w) => w
-                .step_at(self.livedata.elapsed_secs)
-                .map(|s| s.target_power)
-                .unwrap_or(0),
-            None => self.livedata.target_pwr,
-        };
-        self.livedata.target_pwr = target;
+        self.resolve_target();
         // Attribute one second of riding to the current Coggan zone.
         let zone = math::coggan_pwr_model(self.livedata.crnt_pwr, self.userdata.ftp());
         if (1..=7).contains(&zone) {
             let idx = (zone - 1) as usize;
             self.livedata.zone_seconds[idx] += 1;
         }
-        target
+        self.livedata.target_pwr
     }
 
     /// Integrates current speed into the accumulated distance (km). No-op when
@@ -965,8 +968,89 @@ impl App {
         }
     }
 
+    /// Nudge the ERG target by `delta` watts (clamped 0..=600). When a workout
+    /// is loaded this overrides the schedule for one second; otherwise it just
+    /// sets the free-ride target.
+    pub fn nudge_target(&mut self, delta: i16) {
+        let new = (self.livedata.target_pwr as i16 + delta).clamp(0, 600) as u16;
+        self.livedata.target_pwr = new;
+        if self.workout.is_some() {
+            self.erg_override = Some(new);
+        }
+    }
+
+    /// Advance the ride clock to the start of the next workout step (jump
+    /// past the current one). No-op when no workout is loaded or the last
+    /// step is already active.
+    pub fn skip_step(&mut self) {
+        let Some(w) = &self.workout else {
+            return;
+        };
+        let elapsed = self.livedata.elapsed_secs;
+        let next = w
+            .steps
+            .iter()
+            .find(|s| s.start_secs > elapsed)
+            .map(|s| s.start_secs);
+        if let Some(t) = next {
+            self.livedata.elapsed_secs = t;
+            self.erg_override = None;
+            self.resolve_target();
+        }
+    }
+
+    /// Move the ride clock back to the start of the previous workout step (or
+    /// the beginning of the workout if already on the first step).
+    pub fn prev_step(&mut self) {
+        let Some(w) = &self.workout else {
+            return;
+        };
+        let elapsed = self.livedata.elapsed_secs;
+        let current_idx = w
+            .steps
+            .iter()
+            .position(|s| s.start_secs <= elapsed)
+            .unwrap_or(0);
+        let prev = if current_idx > 0 {
+            w.steps[current_idx - 1].start_secs
+        } else {
+            0
+        };
+        self.livedata.elapsed_secs = prev;
+        self.erg_override = None;
+        self.resolve_target();
+    }
+
+    /// Resolve the live ERG target for the current elapsed time. A manual
+    /// override (hold mode) takes precedence over the workout schedule.
+    fn resolve_target(&mut self) {
+        let target = match &self.workout {
+            Some(w) => w
+                .step_at(self.livedata.elapsed_secs)
+                .map(|s| s.target_power)
+                .unwrap_or(0),
+            None => self.livedata.target_pwr,
+        };
+        self.livedata.target_pwr = self.erg_override.unwrap_or(target);
+    }
+
+    /// Toggle between following the loaded workout's ERG schedule and
+    /// holding the trainer at the current target power.
+    pub fn toggle_erg_hold(&mut self) {
+        if self.workout.is_none() {
+            return;
+        }
+        if self.erg_override.is_some() {
+            self.erg_override = None;
+        } else {
+            self.erg_override = Some(self.livedata.target_pwr);
+        }
+    }
+
     /// Key handling for the Control panel while a ride is in progress:
-    /// Space toggles pause/resume, `q` opens the end-of-ride summary.
+    /// Space toggles pause/resume, `q` opens the end-of-ride summary,
+    /// `+/-` nudges ERG by 5 W, `n` skips to the next step, `p` returns to
+    /// the previous step, `e` toggles ERG↔hold.
     fn handle_control_key(&mut self, key_code: KeyCode) -> Action {
         match key_code {
             KeyCode::Char(' ') | KeyCode::Enter => {
@@ -975,6 +1059,26 @@ impl App {
             }
             KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.open_summary();
+                Action::Continue
+            }
+            KeyCode::Char('+') | KeyCode::Char('=') => {
+                self.nudge_target(5);
+                Action::Continue
+            }
+            KeyCode::Char('-') | KeyCode::Char('_') => {
+                self.nudge_target(-5);
+                Action::Continue
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                self.skip_step();
+                Action::Continue
+            }
+            KeyCode::Char('p') | KeyCode::Char('P') => {
+                self.prev_step();
+                Action::Continue
+            }
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                self.toggle_erg_hold();
                 Action::Continue
             }
             _ => Action::Continue,
@@ -1342,5 +1446,158 @@ mod tests {
         terminal
             .draw(|frame| crate::render::draw(frame, &app))
             .expect("confirm quit overlay should render");
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 1 — ride-control keys (handle_control_key).
+    // ------------------------------------------------------------------
+
+    /// Build a tiny 2-step workout (200 W for 60 s, then 100 W for 60 s).
+    fn tiny_workout() -> crate::erg::Workout {
+        use crate::erg::ErgTarget;
+        crate::erg::Workout::from_targets(&[
+            ErgTarget {
+                target_power: 200,
+                duration_seconds: 60,
+                rest_power: 0,
+                rest_duration: 0,
+            },
+            ErgTarget {
+                target_power: 100,
+                duration_seconds: 60,
+                rest_power: 0,
+                rest_duration: 0,
+            },
+        ])
+    }
+
+    #[test]
+    fn erg_nudge_applies_and_clamps() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.set_workout(Some(tiny_workout()));
+        app.handle_key_press(KeyCode::Enter); // start ride, on Control
+        app.livedata.target_pwr = 200;
+
+        // `+` raises the ERG target by 5 W and overrides the schedule.
+        app.handle_key_press(KeyCode::Char('+'));
+        assert_eq!(app.livedata.target_pwr, 205);
+        assert_eq!(app.erg_override, Some(205));
+
+        // `-` lowers it by 5 W.
+        app.handle_key_press(KeyCode::Char('-'));
+        assert_eq!(app.livedata.target_pwr, 200);
+
+        // Nudges clamp at the 0..=600 range.
+        app.livedata.target_pwr = 0;
+        app.handle_key_press(KeyCode::Char('-'));
+        assert_eq!(app.livedata.target_pwr, 0);
+
+        app.livedata.target_pwr = 600;
+        app.handle_key_press(KeyCode::Char('+'));
+        assert_eq!(app.livedata.target_pwr, 600);
+    }
+
+    #[test]
+    fn erg_nudge_is_noop_without_a_ride() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.livedata.target_pwr = 150;
+        app.handle_key_press(KeyCode::Char('+'));
+        assert_eq!(app.livedata.target_pwr, 150);
+        assert_eq!(app.erg_override, None);
+    }
+
+    #[test]
+    fn skip_advances_step_and_clears_override() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.set_workout(Some(tiny_workout()));
+        app.handle_key_press(KeyCode::Enter); // start ride
+
+        // Ride is on step 1 (start_secs 0, end_secs 60). Skip to step 2.
+        app.handle_key_press(KeyCode::Char('n'));
+        assert_eq!(app.livedata.elapsed_secs, 60);
+        assert_eq!(app.livedata.target_pwr, 100);
+        assert_eq!(app.erg_override, None);
+
+        // Skipping past the final step leaves the clock at the last step.
+        app.handle_key_press(KeyCode::Char('n'));
+        assert_eq!(app.livedata.elapsed_secs, 60);
+    }
+
+    #[test]
+    fn prev_step_goes_back_to_previous_step() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.set_workout(Some(tiny_workout()));
+        app.handle_key_press(KeyCode::Enter); // start ride
+
+        // Advance into step 2, then jump back to step 1.
+        app.livedata.elapsed_secs = 75;
+        app.handle_key_press(KeyCode::Char('p'));
+        assert_eq!(app.livedata.elapsed_secs, 0);
+        assert_eq!(app.livedata.target_pwr, 200);
+    }
+
+    #[test]
+    fn toggle_erg_hold_switches_override() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.set_workout(Some(tiny_workout()));
+        app.handle_key_press(KeyCode::Enter); // start ride
+        app.livedata.target_pwr = 200;
+
+        // `e` locks the trainer at the current target (hold mode).
+        app.handle_key_press(KeyCode::Char('e'));
+        assert_eq!(app.erg_override, Some(200));
+
+        // `e` again releases back to the workout schedule.
+        app.handle_key_press(KeyCode::Char('e'));
+        assert_eq!(app.erg_override, None);
+    }
+
+    #[test]
+    fn toggle_erg_hold_is_noop_without_workout() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter); // start ride, free ride
+        app.livedata.target_pwr = 150;
+        app.handle_key_press(KeyCode::Char('e'));
+        assert_eq!(app.erg_override, None);
+    }
+
+    #[test]
+    fn paused_seconds_excluded_from_ride_time() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter); // start ride
+        assert!(app.is_recording());
+
+        // Pause for 3 seconds; the clock must freeze but paused_seconds accrues.
+        app.handle_key_press(KeyCode::Char(' '));
+        for _ in 0..3 {
+            app.tick_second();
+        }
+        assert_eq!(app.paused_seconds, 3);
+        assert_eq!(app.livedata.elapsed_secs, 0);
+
+        // Resume: the clock advances again, paused_seconds stays frozen.
+        app.handle_key_press(KeyCode::Char(' '));
+        app.tick_second();
+        app.tick_second();
+        assert_eq!(app.livedata.elapsed_secs, 2);
+        assert_eq!(app.paused_seconds, 3);
+    }
+
+    #[test]
+    fn control_screen_renders() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter);
+        app.push_power_history();
+        app.push_hr_history();
+        app.push_rpm_history();
+        app.push_velocity_history();
+        app.recompute_metrics(200.0, 1.0);
+
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| crate::render::draw(frame, &app))
+            .expect("control panel should render");
     }
 }

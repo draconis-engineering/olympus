@@ -169,9 +169,16 @@ impl FitWriter {
         let sum_hr: u64 = self.samples.iter().map(|s| s.heart_rate as u64).sum();
         let max_hr = self.samples.iter().map(|s| s.heart_rate).max().unwrap_or(0);
         let max_pwr = self.samples.iter().map(|s| s.power).max().unwrap_or(0);
-        // total time in ms from start
+        // Total time in ms from the first to the last sample.
         if let (Some(first), Some(last)) = (self.samples.first(), self.samples.last()) {
             let total_ms = ((last.timestamp - first.timestamp) * 1000).max(0) as u32;
+            // Integrate energy: kJ = avg_power(W) * elapsed(s) / 1000, then
+            // treat 1 kJ = 1 kcal (the standard sports-app approximation used
+            // by the ride's own `calories` field, so the FIT summary matches
+            // what the Control panel displayed during the ride).
+            let elapsed_s = total_ms as f64 / 1000.0;
+            let avg_pwr = sum_pwr as f64 / n as f64;
+            let calories = (avg_pwr * elapsed_s / 1000.0).round() as u16;
             (
                 (sum_speed / n as f32 * 1000.0) as u16,
                 (sum_hr / n as u64) as u8,
@@ -179,7 +186,7 @@ impl FitWriter {
                 (sum_pwr / n as u64) as u16,
                 max_pwr,
                 (total_dist * 100.0) as u32,
-                0,
+                calories,
                 total_ms,
             )
         } else {
@@ -189,7 +196,14 @@ impl FitWriter {
 
     /// Build the full FIT byte stream.
     fn encode(&self) -> Vec<u8> {
-        let fit_start = self.start_time - FIT_EPOCH_OFFSET;
+        // The session start timestamp comes from the first recorded sample
+        // (not the moment the writer was constructed), so a paused ride's
+        // summary reflects when the rider actually started pedalling.
+        let fit_start = self
+            .samples
+            .first()
+            .map(|s| s.timestamp - FIT_EPOCH_OFFSET)
+            .unwrap_or_else(|| self.start_time - FIT_EPOCH_OFFSET);
 
         // --- FileId message (local 0) ---
         let file_id = FitMessage {
@@ -349,7 +363,7 @@ mod tests {
     fn crc16_ccitt_known_vector() {
         // "123456789" -> 0xBB3D for CRC-16/ARC (the algorithm FIT uses).
         let crc = crc_of(b"123456789");
-        assert_eq!(crc, 0xBB3D);
+         assert_eq!(crc, 0xBB3D);
     }
 
     #[test]
@@ -357,7 +371,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut w = FitWriter::new();
         let base = w.start_time;
-        for i in 0..10 {
+        // 10 minutes at 200 W + 150 bpm, sampled once per second.
+        for i in 0..600 {
             w.push(RecordSample {
                 timestamp: base + i,
                 power: 200,
@@ -375,6 +390,33 @@ mod tests {
         let mut f = File::open(&path).unwrap();
         let records = fitparser::from_reader(&mut f).unwrap();
         assert!(!records.is_empty());
+
+        // Confirm the writer emits a SESSION summary message.
+        let has_session = records
+            .iter()
+            .any(|m| m.kind().as_u16() >> 8 == 18);
+        assert!(has_session, "activity has a SESSION message");
+    }
+
+    #[test]
+    fn session_summary_computes_calories_and_start() {
+        let mut w = FitWriter::new();
+        let base = w.start_time;
+        // 10 minutes at 200 W, sampled once per second.
+        for i in 0..600 {
+            w.push(RecordSample {
+                timestamp: base + i,
+                power: 200,
+                cadence: 90,
+                heart_rate: 150,
+                speed_mps: 8.33,
+                distance_m: i as f32 * 8.33,
+            });
+        }
+        let (_spd, _ahr, _mhr, _apwr, _mpwr, _dist, cal, total_ms) = w.session_summary();
+        // 200 W × 600 s / 1000 = 120 kcal (1 kJ ≈ 1 kcal).
+        assert_eq!(cal, 120);
+        assert_eq!(total_ms, 599_000, "9:59 of recording time");
     }
 
     #[test]

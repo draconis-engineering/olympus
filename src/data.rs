@@ -132,6 +132,15 @@ pub fn save_profile(profile: &UserProfile) -> Result<(), String> {
     std::fs::write(PROFILE_PATH, json).map_err(|e| e.to_string())
 }
 
+/// Ensure the standard Olympus data directories exist on disk. Safe to call
+/// repeatedly; creates nothing extra if they are already present.
+pub fn ensure_data_dirs() -> std::io::Result<()> {
+    std::fs::create_dir_all("data")?;
+    std::fs::create_dir_all(WORKOUTS_DIR)?;
+    std::fs::create_dir_all("data/.fit")?;
+    Ok(())
+}
+
 /// Initialize SQLite database, create/migrate tables, and ensure the data
 /// directory exists.
 pub fn init_db(path: &Path) -> rusqlite::Result<Connection> {

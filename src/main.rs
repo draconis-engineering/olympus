@@ -50,6 +50,14 @@ fn resolve_workout(ftp: u16) -> Option<erg::Workout> {
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    // Initialize the logger first so log::info!/error! are visible instead of
+    // silent (e.g. FIT write failures, BLE scan problems).
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).try_init();
+
+    // Ensure the standard data directories exist so a fresh install has
+    // somewhere for FIT files, the SQLite DB and bundled workouts.
+    let _ = data::ensure_data_dirs();
+
     // Initialize the terminal (async)
     let mut terminal = init().await?;
 

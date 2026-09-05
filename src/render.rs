@@ -974,6 +974,30 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(systext, sysinner);
 
+    // Ride-control hint strip at the bottom of the control panel.
+    let [_, _, hint_area] = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+    let hint_line = Line::from(vec![
+        Span::styled("[+/-]", Style::default().fg(Color::Yellow)),
+        Span::styled("W  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("[n/p]", Style::default().fg(Color::Yellow)),
+        Span::styled("step  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("[e]", Style::default().fg(Color::Yellow)),
+        Span::styled("ERG  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("[Space]", Style::default().fg(Color::Yellow)),
+        Span::styled("pause  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("[Q]", Style::default().fg(Color::Red)),
+        Span::styled("finish", Style::default().fg(Color::DarkGray)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(hint_line).alignment(Alignment::Center),
+        hint_area,
+    );
+
     // Paused banner — centered over the control panel when ride is paused.
     if app.ride == RideState::Paused {
         let banner_area = centered_rect(42, 14, area);
