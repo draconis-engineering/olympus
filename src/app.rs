@@ -1667,10 +1667,25 @@ mod tests {
 
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
-        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| crate::render::draw(frame, &app))
             .expect("summary overlay should render");
+
+        // The Phase 5 export hint must be visible on the summary dialog.
+        let buffer = terminal.backend().buffer();
+        let text: String = buffer
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>();
+        assert!(
+            text.contains("data/.fit/ride_*.fit")
+                && text.contains("Garmin")
+                && text.contains("Strava"),
+            "export hint missing from summary dialog"
+        );
     }
 
     #[test]

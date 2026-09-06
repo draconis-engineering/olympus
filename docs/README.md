@@ -2,7 +2,7 @@
 
 Olympus is a minimalist, high-performance **TUI** for indoor cycling. The application connects directly to smart trainers and fitness sensors via **BLE**, renders real-time telemetry with high-res terminal graphics, schedules `.erg`/`.zwo` workouts, and writes Garmin-valid `.fit` files — no subscription, no cloud.
 
-[![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/) [![Roadmap](https://img.shields.io/badge/Roadmap-v1.0-blue)](../ROADMAP.md)
+[![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/) [![Roadmap](https://img.shields.io/badge/Roadmap-v1.0-blue)](ROADMAP.md)
 
 ## Architectural Overview
 
@@ -82,7 +82,25 @@ Or pick one from **Database → Workouts** (press `Enter` on a `.zwo`/`.erg` in 
 Rider settings (weight, height, FTP, max HR, name) live in `data/user/profile.json`
 and are edited live in **Settings → User** (`src/app.rs:347`).
 
-> **Roadmap to 1.0:** See [`../ROADMAP.md`](../ROADMAP.md) for the locked build plan (phases 0–6, out-of-scope, and competitive positioning vs. Strava/Rouvy/Tacx/TrainerRoad/Zwift).
+> **Roadmap to 1.0:** See [`ROADMAP.md`](ROADMAP.md) for the locked build plan (phases 0–6, out-of-scope, and competitive positioning vs. Strava/Rouvy/Tacx/TrainerRoad/Zwift).
+
+### Exporting rides (manual — no OAuth in 1.0)
+
+Each saved ride is written as a Garmin-valid FIT activity to
+`data/.fit/ride_*.fit` (plus its summary in `data/olympus.db`). To get a ride
+onto a device/account, open the folder and drag the newest file onto Garmin
+Connect:
+
+```bash
+xdg-open data/.fit        # Linux
+open data/.fit            # macOS
+explorer data\.fit        # Windows
+```
+
+1. Drag the newest `ride_*.fit` into your browser at <https://connect.garmin.com>.
+2. Garmin Connect auto-syncs to Strava (and your watches) from there.
+3. Direct Garmin upload and a Zwift bridge are deferred to 1.1 — in 1.0
+   Olympus never talks to a cloud service.
 
 ### Bluetooth / Smart trainer (Linux)
 
@@ -135,7 +153,7 @@ cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
 - [x] **BT robustness:** `Scan` button in Settings, error banner, `Simulated` qualifier (Phase 2)
 - [x] **History & Stats:** Sessions drill-down (samples replay) + minimal Stats (weekly TSS, PR `1m/5m/20m`) (Phase 3)
 - [x] **Content & FTP:** 4 curated workouts + `TSS|duration` subtitles + `best20×0.95` FTP suggestion (Phase 4, single `ftp_test_20min.zwo` for 1.0)
-- [ ] **Export:** Manual `data/.fit` hint in summary; Garmin/Strava/Zwift auto-upload deferred to 1.1 (Phase 5)
+- [x] **Export:** Manual `data/.fit` hint in summary; Garmin/Strava/Zwift auto-upload deferred to 1.1 (Phase 5)
 - [ ] **Polish:** `?` help overlay, `1.0.0-rc1` bump (Phase 6)
 
 > Full phased plan, competitive gap table, and out-of-scope list: [`ROADMAP.md`](ROADMAP.md)

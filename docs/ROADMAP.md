@@ -77,8 +77,8 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 
 ### Phase 5 — Export (1.0 = manual; bridge in 1.1)
 
-- [ ] Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect (auto-syncs to Strava)` — **no OAuth in 1.0**. Garmin Connect direct upload deferred to 1.1 (it then fans out to Strava, so Strava direct is never needed separately; Zwift direct also 1.1 if desired).
-- [ ] Document manual flow in `docs/README.md` (`xdg-open data/.fit`).
+- [x] Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect (auto-syncs to Strava)` — **no OAuth in 1.0**. Garmin Connect direct upload deferred to 1.1 (it then fans out to Strava, so Strava direct is never needed separately; Zwift direct also 1.1 if desired).
+- [x] Document manual flow in `docs/README.md` (`xdg-open data/.fit`).
 
 ### Phase 6 — Polish & Release (½ day)
 

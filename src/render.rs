@@ -13,7 +13,7 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Axis, Block, BorderType, Borders, Chart, Clear, Dataset, Gauge, GraphType, Paragraph,
+    Axis, Block, BorderType, Borders, Chart, Clear, Dataset, Gauge, GraphType, Paragraph, Wrap,
 };
 use tui_big_text::{BigText, PixelSize};
 
@@ -125,7 +125,7 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         0.0
     };
-    let popup = centered_rect(56, 62, area);
+    let popup = centered_rect(68, 62, area);
     frame.render_widget(Clear, popup);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -137,7 +137,7 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
 
     let [summary_area, hint_area] = Layout::vertical([
         Constraint::Min(0),
-        Constraint::Length(3),
+        Constraint::Length(4),
     ])
     .areas(inner);
 
@@ -195,12 +195,22 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
         ))
         .alignment(Alignment::Center),
         Line::from(Span::styled(
-            "Save writes a .fit file + session history (Strava/Garmin ready).",
+            "Save writes a .fit file + session history.",
+            Color::DarkGray,
+        ))
+        .alignment(Alignment::Center),
+        Line::from(Span::styled(
+            "FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect (auto-syncs to Strava).",
             Color::DarkGray,
         ))
         .alignment(Alignment::Center),
     ];
-    frame.render_widget(Paragraph::new(hints), hint_area);
+    frame.render_widget(
+        Paragraph::new(hints)
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Center),
+        hint_area,
+    );
 
     // FTP suggestion prompt (rides on top of the summary dialog).
     if let Some(suggested) = app.confirm_ftp {
