@@ -53,12 +53,12 @@ The terminal view runs at 60 fps (1 Hz ride-engine tick) using Unicode Braille f
 
 - **Header/Footer** (`src/render.rs:287`/`250`): `olympus` + version + local time; footer highlights current page and rider name.
 - **Main** (`src/render.rs:308`): ASCII `OLYMPUS` slant logo + 6-item nav (`New Ride` → Control, Workouts → Database, Settings, Stats, Quit with confirm `src/render.rs:121`).
-- **Control** (`src/render.rs:392`): Big Power/HR (`tui-big-text`), Braille history for power/HR/cadence/speed `tail_points()` `41`, zone gauges `726`, Ride Stats `TIME/DIST/ELEV/GRAD/CAL/TSS/IF` `778`, Intervals `w.step_at(elapsed)` `822`, System `BT [STATE]` color `926` (`Connected` green / `Simulated` yellow / `Error` red). Overlays: `Paused` banner `978` (`Space` resume, `Q` finish) and end-of-ride Summary `162` (`Save/Discard/Resume`).
+- **Control** (`src/render.rs:392`): Big Power/HR (`tui-big-text`), Braille history for power/HR/cadence/speed `tail_points()` `41`, zone gauges `726`, Ride Stats `TIME/DIST/ELEV/GRAD/CAL/TSS/IF` `778`, Intervals `w.step_at(elapsed)` `822`, System `BT [STATE]` color `926` (`Connected` green / `Simulated` yellow / `Error` red). Overlays: `Paused` banner `978` (`Space` resume, `Q` finish), end-of-ride Summary `162` (`Save/Discard/Resume`), and a global keybind reference on `?`.
 - **Database** (`src/render.rs:1008`): Two-tab `Workouts` (`data/workouts/*.zwo|*.erg` `src/data.rs:329`) and `Sessions` (`fit_sessions` `src/data.rs:285`).
 - **Settings** (`src/render.rs:1160`): `General`/`Appearance` (stubs) / `Bluetooth` (live `state.label()` `1283`) / `System` / `User` profile editor.
-- **Stats** (`src/render.rs:1399`): Stub in v0.1.5 — weekly TSS + PR curve planned for v1.0 (see Roadmap).
+- **Stats** (`src/render.rs:1399`): weekly TSS bars (last 8 weeks), power-curve PR `1m/5m/20m`, volume (km / hours / km·h) — computed once from the `samples` table with the rider's FTP.
 
-## Build & Run (v0.1.5 → v1.0)
+## Build & Run (v1.0.0-rc1)
 
 ```
 cargo run --release
@@ -133,7 +133,7 @@ cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
 
 ## Feature Status
 
-### Shipped (v0.1.5)
+### Shipped (v1.0.0-rc1)
 
 - [x] End-to-end ride: BLE acquisition (power / cadence via `CrankTracker` `src/ble.rs:40` / HR / speed)
 - [x] ERG target power pushed to trainer (FTMS `0x2AD9` `src/ble.rs:464`, with `Scanning/Connecting/Simulated/Error` states `src/ble.rs:103`)
@@ -154,6 +154,6 @@ cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
 - [x] **History & Stats:** Sessions drill-down (samples replay) + minimal Stats (weekly TSS, PR `1m/5m/20m`) (Phase 3)
 - [x] **Content & FTP:** 4 curated workouts + `TSS|duration` subtitles + `best20×0.95` FTP suggestion (Phase 4, single `ftp_test_20min.zwo` for 1.0)
 - [x] **Export:** Manual `data/.fit` hint in summary; Garmin/Strava/Zwift auto-upload deferred to 1.1 (Phase 5)
-- [ ] **Polish:** `?` help overlay, `1.0.0-rc1` bump (Phase 6)
+- [x] **Polish:** `?` help overlay, `1.0.0-rc1` bump (Phase 6)
 
 > Full phased plan, competitive gap table, and out-of-scope list: [`ROADMAP.md`](ROADMAP.md)

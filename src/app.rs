@@ -449,6 +449,8 @@ pub struct App {
     /// FTP update prompt from the ride summary: `Some(suggested_ftp)` when the
     /// ride's best 20-min power (× 0.95) clears the current FTP by a margin.
     pub confirm_ftp: Option<u16>,
+    /// Whether the `?` keybind reference overlay is showing.
+    pub help_open: bool,
 }
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData) -> Self {
@@ -475,6 +477,7 @@ impl App {
             session_detail: None,
             stats: StatsState::default(),
             confirm_ftp: None,
+            help_open: false,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -505,7 +508,7 @@ impl App {
 
     /// The Olympus release version string.
     pub fn version_static() -> &'static str {
-        "0.1.5"
+        "1.0.0-rc1"
     }
     pub fn user(&self) -> &str {
         &self.userdata.profile.username
@@ -1216,6 +1219,14 @@ impl App {
     }
 
     pub fn handle_key_press(&mut self, key_code: KeyCode) -> Action {
+        // The `?` keybind overlay claims every key while it's open.
+        if self.help_open {
+            if matches!(key_code, KeyCode::Esc | KeyCode::Char('?') | KeyCode::Enter) {
+                self.help_open = false;
+            }
+            return Action::Continue;
+        }
+
         // If a quit confirmation is showing, only the confirm/cancel keys
         // are honored; everything else is ignored until it's dismissed.
         if self.confirm_quit {
@@ -1271,6 +1282,10 @@ impl App {
             }
             KeyCode::Char('s') | KeyCode::Char('S') => {
                 self.screen = Screen::Settings;
+                return Action::Continue;
+            }
+            KeyCode::Char('?') => {
+                self.help_open = true;
                 return Action::Continue;
             }
             _ => {}
@@ -1758,6 +1773,48 @@ mod tests {
         terminal
             .draw(|frame| crate::render::draw(frame, &app))
             .expect("FTP prompt overlay should render");
+    }
+
+    #[test]
+    fn help_overlay_toggles_and_blocks_keys() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+
+        // '?' opens; most recent globals still pass through before it opens.
+        app.handle_key_press(KeyCode::Char('?'));
+        assert!(app.help_open);
+        // While open, all keys are swallowed (M doesn't navigate).
+        app.handle_key_press(KeyCode::Char('m'));
+        assert_eq!(app.screen, Screen::Main); // unchanged default
+        // Any of Esc / '?' / Enter dismisses.
+        app.handle_key_press(KeyCode::Esc);
+        assert!(!app.help_open);
+    }
+
+    #[test]
+    fn help_overlay_renders() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.screen = Screen::Control;
+        app.help_open = true;
+
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::render::draw(frame, &app))
+            .expect("help overlay should render");
+
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>();
+        assert!(
+            text.contains("pause / resume") && text.contains("Database"),
+            "help overlay content missing"
+        );
     }
 
     #[test]

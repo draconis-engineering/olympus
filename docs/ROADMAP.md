@@ -2,7 +2,7 @@
 
 > **Vision:** *The TrainerRoad for terminals.* A free, offline-first, privacy-minded TUI that drives a Tacx Flux S2 (or any FTMS trainer) with flawless ERG execution and writes a Garmin-valid `.fit` you can drop into Garmin Connect → Strava. No video worlds, no MMO server, no social feed — just perfect workouts.
 
-**Current version:** `0.1.5` (`src/app.rs:467`) · **Target:** `1.0.0-rc1` → `1.0.0`
+**Current version:** `1.0.0-rc1` (`src/app.rs:467`) · dashed toward `1.0.0`
 **Minimum viable 1.0 promise:** Fresh install → pair Flux S2 → pick a workout → ride ERG with live Braille graphs and pause/skip → finish with Save/Discard summary → find a FIT in `data/.fit` that Garmin/Strava accept *and* see the ride in local history/stats. No JSON hand-editing, no restart on Bluetooth hiccup.
 
 This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy / Tacx Training / TrainerRoad / Zwift (see analysis in PR discussion). It is the **locked** build plan.
@@ -82,9 +82,9 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 
 ### Phase 6 — Polish & Release (½ day)
 
-- [ ] `?` help overlay via `centered_rect` `src/render.rs:58` enumerating `m/c/d/s` globals `src/app.rs:1028` + `Space/Q/+/−/n/p/e` ride keys
-- [ ] `render_summary` `src/render.rs:162` FTP suggestion line + export hint
-- [ ] Bump `0.1.5` `src/app.rs:467` → `1.0.0-rc1`, `git tag v1.0.0-rc1`
+- [x] `?` help overlay via `centered_rect` `src/render.rs:58` enumerating `m/c/d/s` globals `src/app.rs:1028` + `Space/Q/+/−/n/p/e` ride keys
+- [x] `render_summary` `src/render.rs:162` FTP suggestion line + export hint
+- [x] Bump `0.1.5` `src/app.rs:467` → `1.0.0-rc1`, `git tag v1.0.0-rc1`
 
 ---
 

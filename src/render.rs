@@ -73,6 +73,61 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     horiz[1]
 }
 
+/// Draw the `?` keybind reference overlay.
+fn render_help(frame: &mut Frame, area: Rect) {
+    let popup = centered_rect(62, 84, area);
+    frame.render_widget(Clear, popup);
+    let key = |k: &str, d: &str| {
+        Line::from(vec![
+            Span::styled(format!("{k:<14}"), Style::default().fg(Color::Cyan)),
+            Span::styled(d.to_string(), Style::default().fg(Color::White)),
+        ])
+    };
+    let section = |title: &str| {
+        Line::from(Span::styled(
+            format!(" {title} "),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ))
+    };
+    let lines = vec![
+        section("Global"),
+        key("m", "Main menu"),
+        key("c", "Control panel (starts a ride if idle)"),
+        key("d", "Database — workouts + session history"),
+        key("s", "Settings"),
+        key("?", "close this help"),
+        section("Ride — Control panel"),
+        key("Space / Enter", "pause / resume"),
+        key("Q", "finish ride — open summary"),
+        key("+ / -", "ERG target ±5 W"),
+        key("n / p", "next / previous interval step"),
+        key("e", "toggle ERG / hold"),
+        section("Ride summary"),
+        key("S / Y", "save session (.fit + history)"),
+        key("D / N", "discard session"),
+        key("R / Esc", "resume ride"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Stats are recomputed from saved rides; accept an FTP suggestion from the summary to keep zones fresh.",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .title(" Keybinds ")
+                    .border_style(Style::default().fg(Color::Cyan)),
+            )
+            .alignment(Alignment::Left),
+        popup,
+    );
+}
+
 /// Draw the "are you sure you want to quit?" confirmation dialog.
 fn render_confirm_quit(frame: &mut Frame, area: Rect) {
     let popup = centered_rect(44, 26, area);
@@ -1741,5 +1796,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
         render_summary(frame, app, full);
     } else if app.confirm_quit {
         render_confirm_quit(frame, full);
+    }
+    if app.help_open {
+        render_help(frame, full);
     }
 }
