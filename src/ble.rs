@@ -14,7 +14,6 @@ use btleplug::api::{
 };
 use btleplug::platform::{Manager, Peripheral};
 use futures::StreamExt;
-use rand::{Rng, SeedableRng};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -105,7 +104,6 @@ pub enum BleState {
     Scanning,
     Connecting,
     Connected { name: String },
-    Simulated,
     Error(String),
 }
 
@@ -162,11 +160,11 @@ async fn driver_loop(
                 break p;
             }
             Ok(None) => {
-                // No device found — show simulated data so the UI stays live,
-                // then try scanning again.
-                state_send(BleState::Simulated);
-                emit_simulated(&tel_tx, &mut cmd_rx).await;
-                time::sleep(Duration::from_secs(1)).await;
+                // No trainer found — report idle and rescan shortly. Olympus
+                // never emits made-up telemetry; without a trainer the UI shows
+                // an idle panel instead of fake numbers.
+                state_send(BleState::Idle);
+                time::sleep(Duration::from_secs(2)).await;
             }
             Err(e) => {
                 state_send(BleState::Error(format!("BLE error: {e}")));
@@ -527,42 +525,6 @@ async fn ramp_target(
     Ok(())
 }
 
-/// When no trainer is discoverable we emit gentle simulated data so the UI
-/// stays responsive and the graphs keep moving. Uses slight random variance
-/// so it looks alive.
-async fn emit_simulated(tel_tx: &Sender<Telemetry>, cmd_rx: &mut Receiver<BleCommand>) {
-    let mut pwr: u16 = 180;
-    let mut rpm: u16 = 88;
-    let mut hr: u16 = 135;
-    // StdRng is Send so it can be held across the awaits below.
-    let mut rng = rand::rngs::StdRng::from_entropy();
-
-    for _ in 0..10 {
-        pwr = (pwr as i32 + rng.gen_range(-6..=6)) as u16;
-        rpm = (rpm as i32 + rng.gen_range(-2..=2)).clamp(60, 120) as u16;
-        hr = (hr as i32 + rng.gen_range(-2..=2)).clamp(90, 190) as u16;
-
-        let _ = tel_tx
-            .send(Telemetry {
-                power: Some(pwr.clamp(0, 1000)),
-                cadence: Some(rpm),
-                heart_rate: Some(hr),
-                speed: Some(30.0 + rng.gen_range(-1.0..=1.0)),
-            })
-            .await;
-
-        // Give up early if the UI asks us to scan.
-        if cmd_rx
-            .try_recv()
-            .map(|c| c == BleCommand::Scan)
-            .unwrap_or(false)
-        {
-            break;
-        }
-        time::sleep(Duration::from_millis(200)).await;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -588,15 +550,6 @@ mod tests {
             name: "Tacx Flux S2".into(),
         };
         assert_eq!(a, b);
-    }
-
-    #[test]
-    fn simulated_range_is_bounded() {
-        let mut rng = rand::rngs::StdRng::from_entropy();
-        for _ in 0..100 {
-            let v = rng.gen_range(-6..=6);
-            assert!(v >= -6 && v <= 6);
-        }
     }
 
     #[test]

@@ -53,9 +53,9 @@ The terminal view runs at 60 fps (1 Hz ride-engine tick) using Unicode Braille f
 
 - **Header/Footer** (`src/render.rs:287`/`250`): `olympus` + version + local time; footer highlights current page and rider name.
 - **Main** (`src/render.rs:308`): ASCII `OLYMPUS` slant logo + 6-item nav (`New Ride` → Control, Workouts → Database, Settings, Stats, Quit with confirm `src/render.rs:121`).
-- **Control** (`src/render.rs:392`): Big Power/HR (`tui-big-text`), Braille history for power/HR/cadence/speed `tail_points()` `41`, zone gauges `726`, Ride Stats `TIME/DIST/ELEV/GRAD/CAL/TSS/IF` `778`, Intervals `w.step_at(elapsed)` `822`, System `BT [STATE]` color `926` (`Connected` green / `Simulated` yellow / `Error` red). Overlays: `Paused` banner `978` (`Space` resume, `Q` finish), end-of-ride Summary `162` (`Save/Discard/Resume`), and a global keybind reference on `?`.
-- **Database** (`src/render.rs:1008`): Two-tab `Workouts` (`data/workouts/*.zwo|*.erg` `src/data.rs:329`) and `Sessions` (`fit_sessions` `src/data.rs:285`).
-- **Settings** (`src/render.rs:1160`): `General`/`Appearance` (stubs) / `Bluetooth` (live `state.label()` `1283`) / `System` / `User` profile editor.
+- **Control** (`src/render.rs:392`): Big Power/HR (`tui-big-text`), Braille history for power/HR/cadence/speed `tail_points()`, zone gauges `726`, Ride Stats `TIME/DIST/ELEV/GRAD/CAL/TSS/IF` (`ELEV`/`GRAD` read `-- (ERG mode)` when a trainer reports none), Intervals `w.step_at(elapsed)`, System `BT [STATE]` color (`Connected` green / `Error` red). With no ride in progress it swaps the live dashboard for an idle `READY — NO RIDE IN PROGRESS` panel (`render_control_idle`). Overlays: `Paused` banner (`Space` resume, `Q` finish), end-of-ride Summary (`Save/Discard/Resume`), and a global keybind reference on `?`.
+- **Database** (`src/render.rs:1008`): Two-tab `Workouts` (`data/workouts/*.zwo|*.erg` `src/data.rs`) and `Sessions` (`fit_sessions` `src/data.rs`).
+- **Settings** (`src/render.rs:1160`): `Bluetooth` (live `state.label()`) / `System` / `User` profile editor — placeholder `General`/`Appearance` panels were dropped in Phase 8.
 - **Stats** (`src/render.rs:1399`): weekly TSS bars (last 8 weeks), power-curve PR `1m/5m/20m`, volume (km / hours / km·h) — computed once from the `samples` table with the rider's FTP.
 
 ## Build & Run (v1.0.0-rc1)
@@ -124,20 +124,23 @@ bluetoothctl power on
 bluetoothctl scan on   # optional; the app scans on start
 ```
 
-If no trainer/sensor is found the app falls back to simulated data so the UI
-stays live. Mac/Windows need no extra setup beyond granting Bluetooth access.
+If no trainer/sensor is paired the Control panel stays on its idle
+`READY — NO RIDE IN PROGRESS` screen — Olympus never fabricates data, so you
+won't see misleading power/HR numbers. Mac/Windows need no extra setup beyond
+granting Bluetooth access.
 
 ### Running without Bluetooth
 
-The app runs happily with no trainer attached — it emits simulated power,
-cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
+The app runs happily with no trainer attached. The idle Control panel shows a
+starting ride with `Enter`/`Space`, and FIT/SQLite persistence still works once
+you ride — you simply get honest `--` stats instead of invented telemetry.
 
 ## Feature Status
 
 ### Shipped (v1.0.0-rc1)
 
 - [x] End-to-end ride: BLE acquisition (power / cadence via `CrankTracker` `src/ble.rs:40` / HR / speed)
-- [x] ERG target power pushed to trainer (FTMS `0x2AD9` `src/ble.rs:464`, with `Scanning/Connecting/Simulated/Error` states `src/ble.rs:103`)
+- [x] ERG target power pushed to trainer (FTMS `0x2AD9` `src/ble.rs:464`, with `Idle/Scanning/Connecting/Connected/Error` states `src/ble.rs`)
 - [x] `.erg` and `.zwo` workout parsing + interval scheduling (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP` `src/erg.rs:113`)
 - [x] Metrics: rolling `5/10/20-min` (+`3m/1m/30s/10s/3s`) power, NP/IF/TSS/kJ/kcal, distance (`src/math.rs:92`, `src/app.rs:634`)
 - [x] Rider profile (JSON) load/save with clamped editor (`src/data.rs:119`, `src/app.rs:347`)

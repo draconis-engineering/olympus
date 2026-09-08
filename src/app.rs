@@ -194,8 +194,6 @@ pub enum BleUiState {
     Scanning,
     Connecting,
     Connected,
-    /// No trainer found; showing simulated data.
-    Simulated,
     Error(String),
 }
 
@@ -213,7 +211,6 @@ impl BleUiState {
             BleUiState::Scanning => "SCANNING",
             BleUiState::Connecting => "CONNECTING",
             BleUiState::Connected => "CONNECTED",
-            BleUiState::Simulated => "SIMULATED",
             BleUiState::Error(_) => "ERROR",
         }
     }
@@ -887,14 +884,9 @@ impl App {
                         Action::Continue
                     }
                     MainSelection::Control => {
-                        // Navigate to the live panel; start a fresh ride if
-                        // none is already in progress.
-                        if !self.in_ride() {
-                            self.start_ride(true);
-                        } else {
-                            self.screen = Screen::Control;
-                            self.ride = RideState::Running;
-                        }
+                        // Navigate to the live panel; the idle screen starts
+                        // a ride only when the user asks for one.
+                        self.screen = Screen::Control;
                         Action::Continue
                     }
                     MainSelection::Workouts => {
@@ -1157,13 +1149,18 @@ impl App {
     }
 
     /// Key handling for the Control panel while a ride is in progress:
-    /// Space toggles pause/resume, `q` opens the end-of-ride summary,
-    /// `+/-` nudges ERG by 5 W, `n` skips to the next step, `p` returns to
-    /// the previous step, `e` toggles ERG↔hold.
+    /// Space toggles pause/resume on a live ride and starts a fresh ride from
+    /// the idle panel; `q` opens the end-of-ride summary, `+/-` nudges ERG by
+    /// 5 W, `n` skips to the next step, `p` returns to the previous step,
+    /// `e` toggles ERG↔hold.
     fn handle_control_key(&mut self, key_code: KeyCode) -> Action {
         match key_code {
             KeyCode::Char(' ') | KeyCode::Enter => {
-                self.toggle_pause();
+                if self.in_ride() {
+                    self.toggle_pause();
+                } else {
+                    self.start_ride(true);
+                }
                 Action::Continue
             }
             KeyCode::Char('q') | KeyCode::Char('Q') => {
@@ -1267,12 +1264,8 @@ impl App {
                 return Action::Continue;
             }
             KeyCode::Char('c') | KeyCode::Char('C') => {
-                // Navigate to the live panel; start a fresh ride if none active.
-                if !self.in_ride() {
-                    self.start_ride(true);
-                } else {
-                    self.screen = Screen::Control;
-                }
+                // Navigate to the live panel (idle screen unless a ride is on).
+                self.screen = Screen::Control;
                 return Action::Continue;
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
@@ -1478,10 +1471,7 @@ mod tests {
     #[test]
     fn settings_bluetooth_enter_emits_scan() {
         let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
-        app.handle_key_press(KeyCode::Char('s')); // to Settings
-        // General -> Appearance -> Bluetooth
-        app.handle_key_press(KeyCode::Down);
-        app.handle_key_press(KeyCode::Down);
+        app.handle_key_press(KeyCode::Char('s')); // to Settings (Bluetooth panel)
         assert_eq!(
             *app.selections.settings(),
             crate::nav::SettingsSelection::Bluetooth
@@ -1497,7 +1487,8 @@ mod tests {
     #[test]
     fn settings_non_bluetooth_enter_is_continue() {
         let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
-        app.handle_key_press(KeyCode::Char('s')); // to Settings (General panel)
+        app.handle_key_press(KeyCode::Char('s')); // to Settings (Bluetooth)
+        app.handle_key_press(KeyCode::Down); // -> System, which ignores Enter
         assert_eq!(app.handle_key_press(KeyCode::Enter), Action::Continue);
     }
 
@@ -1963,6 +1954,25 @@ mod tests {
         app.tick_second();
         assert_eq!(app.livedata.elapsed_secs, 2);
         assert_eq!(app.paused_seconds, 3);
+    }
+
+    #[test]
+    fn tss_frozen_during_pause() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.handle_key_press(KeyCode::Enter); // start ride
+        app.push_power_history();
+        app.recompute_metrics(200.0, 1.0);
+        let tss_before = app.livedata.tss;
+
+        // Pause; the ride clock must not move so the TSS denominator
+        // (`elapsed_secs`) never includes paused time.
+        app.handle_key_press(KeyCode::Char(' '));
+        for _ in 0..5 {
+            app.tick_second();
+        }
+        assert_eq!(app.paused_seconds, 5);
+        assert_eq!(app.livedata.elapsed_secs, 0);
+        assert_eq!(app.livedata.tss, tss_before);
     }
 
     #[test]

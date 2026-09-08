@@ -212,7 +212,6 @@ async fn main() -> io::Result<()> {
                     app.ble = BleUiState::Connected;
                     app.trainer_name = name;
                 }
-                BleState::Simulated => app.ble = BleUiState::Simulated,
                 BleState::Error(e) => app.ble = BleUiState::Error(e),
             }
         }

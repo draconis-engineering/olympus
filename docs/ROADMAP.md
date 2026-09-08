@@ -26,16 +26,16 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 
 | Phase | Delivered in | Headline |
 |---|---|---|
-| **0–2 — Correctness, ride control, BLE.** | `3ef2f08` | FIT `total_calories` from avg power + `start` from first sample; `env_logger::init()`; `ensure_data_dirs()` on boot; dead `render_loading` removed; `--help`/`--version` CLI; deps trimmed (dropped `crossbeam-channel`, `serde-xml-rs`; `uuid` kept for GATT UUIDs). Ride control: `+/-` ±5 W ERG nudge, `n`/`p` skip/prev step, `e` ERG↔hold, control footer key hints, `paused_seconds` accrual, tests. BLE: Settings `Scan` button, error banner, `Simulated` yellow qualifier, `ramp_target` 2–3 s linear ramp on target changes. |
+| **0–2 — Correctness, ride control, BLE.** | `3ef2f08` | FIT `total_calories` from avg power + `start` from first sample; `env_logger::init()`; `ensure_data_dirs()` on boot; dead `render_loading` removed; `--help`/`--version` CLI; deps trimmed (dropped `crossbeam-channel`, `serde-xml-rs`; `uuid` kept for GATT UUIDs). Ride control: `+/-` ±5 W ERG nudge, `n`/`p` skip/prev step, `e` ERG↔hold, control footer key hints, `paused_seconds` accrual, tests. BLE: Settings `Scan` button, error banner, `ramp_target` 2–3 s linear ramp on target changes. |
 | **3 — History & Stats.** | `9180f34` | Sessions drill-down (Braille power(t) vs target(t) replay from `samples`); Stats screen: weekly TSS bars (last 8 weeks), PR curve `1m/5m/20m`, volume km/h — all from local SQLite. |
 | **4 — Content & FTP.** | `7f71b0b` | 4 curated workouts (`ftp_test_20min`, `sweet_spot`, `vo2max_30_30`, `recovery`); Workouts lists show `TSS \| duration`; summary prompt `best20×0.95 → Update FTP? [Y/N]`. |
 | **5 — Export (manual).** | `67f5165` | Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect`; manual export docs. |
 | **6 — Polish & release.** | `d8f76a1` | `?` keybind help overlay; bump to `1.0.0-rc1` (app + Cargo.toml); tag `v1.0.0-rc1`. |
 
-Tests: **70 passing**, clippy baseline **20 pre-existing warnings**. Workouts directory: `data/workouts/*.zwo`.
+Tests: **70 passing**, clippy baseline **18 pre-existing warnings** (dropped 2 with the simulated-data removal). Workouts directory: `data/workouts/*.zwo`.
 
 ### What a user can do today
-Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (or ride simulated), pick one of 4 workouts or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
+Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (no trainer attached is fine — the idle Control panel shows `READY — NO RIDE IN PROGRESS` instead of fabricated numbers), pick one of 4 workouts or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
 
 ---
 
@@ -50,20 +50,21 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trai
 - Files: `docs/ROADMAP.md`, `docs/README.md`. Verify: `cargo test`.
 
 ### Phase 8 — Trust the numbers (small, high credibility)
-- [ ] Pin pause-exclusion end-to-end: `paused_seconds` already freezes clock + accrues (app.rs:775, `paused_seconds_excluded_from_ride_time` app.rs:1947) — add the missing assertion that `math::tss`/distance denominators receive `elapsed − paused`.
-- [ ] `ELEV/GRAD` are always `0.0` in ERG mode — render `--` with a "SIM planned" note instead of a confident zero.
-- Files: `src/app.rs`, `src/math.rs`, `src/render.rs`. Verify: new TSS-pause test, updated render test.
+- [x] Pin pause-exclusion end-to-end: `paused_seconds` already freezes clock + accrues (`paused_seconds_excluded_from_ride_time`) — added `tss_frozen_during_pause` asserting TSS's `elapsed_secs` denominator never includes paused time.
+- [x] `ELEV/GRAD` are always `0.0` in ERG mode — render `-- (ERG mode)` instead of a confident zero.
+- [x] **No made-up data, anywhere:** removed the simulated BLE fallback (`emit_simulated`, `BleState::Simulated`, `rand` dep), the `General`/`Appearance` settings stubs, and the two `(simulated — no trainer)` footers. Control now shows an idle `READY — NO RIDE IN PROGRESS` panel when no ride is running (`render_control_idle`); `c` / Main→Control just navigate, and `Space`/`Enter` on the idle panel starts a ride.
+- Files: `src/app.rs`, `src/ble.rs`, `src/math.rs`, `src/render.rs`, `src/main.rs`, `src/nav.rs`, `Cargo.toml`. Verify: new TSS-pause test, idle-render path covered by the existing control smoke tests.
 
 ### Phase 9 — HR strap merge (medium–large, biggest data-quality gap)
 - [ ] Second peripheral `0x2A37` Heart Rate Measurement alongside the FTMS trainer; merge into `LiveData.hr` with source priority (strap wins when present); cadence stays `CrankTracker`.
 - [ ] `ble.rs`: dual GATT subscription, peripheral grouping by service UID; rename `find_trainer` → `find_sensors`; Settings shows strap connect state.
-- [ ] Unit tests: strap-over-trainer priority, dropped-strap fallback, simulated unchanged.
+- [ ] Unit tests: strap-over-trainer priority, dropped-strap fallback, no-trainer idle state.
 - Risk: multi-peripheral flake on BlueZ → reuse Phase 0–2 reconnect/Scan; keep single-trainer ERG until stable.
 
 ### Phase 10 — FTP ramp test + first-ride onboarding (small–medium)
 - [ ] Ship `data/workouts/ramp_test.zwo` (**Warmup → 20 W/min Ramp → Cooldown**) via the existing `Ramp` parser (`src/erg.rs`).
 - [ ] Detection formula: **FTP = 0.75 × best 60-s power** of the final ramp minutes, reusing `best_rolling_mean` and surfacing through the existing `confirm_ftp` summary prompt (Phase 4).
-- [ ] Onboarding: with no session history + no trainer, Main suggests the first ride (`ftp_test_20min` or the ramp) on top of the existing "(simulated — no trainer)" qualifier.
+- [ ] Onboarding: with no session history + no trainer, Main suggests the first ride (`ftp_test_20min` or the ramp) on top of the existing `READY — NO RIDE IN PROGRESS` idle panel.
 - Verify: ramp-parse test (like `shipped_workouts_parse_and_have_totals`), FTP-detection test, onboarding render test.
 
 ### Phase 11 — Distribution (medium)
@@ -103,7 +104,7 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trai
 
 ## 5. Risks & Mitigations
 
-- **BT flake on Linux BlueZ** (single peripheral) → `Scan` button + `Simulated` fallback + heartbeat (live). Phase 9 adds a second peripheral — grow cautiously, keep single-trainer ERG until stable.
+- **BT flake on Linux BlueZ** (single peripheral) → `Scan` button + heartbeat (live) + honest idle panel when nothing to read. Phase 9 adds a second peripheral — grow cautiously, keep single-trainer ERG until stable.
 - **FIT rejected by Garmin** → `fitparser` round-trip tests (extend to assert `total_calories` + `start`); Phase 12 asserts on the upload API response.
 - **TSS inflation when paused** → Phase 8 pins the exclusion as a test.
 - **Stats perf on thousands of samples** → `LIMIT` + indexed `samples.session_id` (live); Phase 13 reuses pre-aggregated `fit_sessions`.

@@ -95,17 +95,13 @@ impl DatabaseSelection {
 #[derive(Default, Debug, PartialEq, Clone, Copy)]
 pub enum SettingsSelection {
     #[default]
-    General,
-    Appearance,
     Bluetooth,
     System,
     User,
 }
 
 impl SettingsSelection {
-    const ALL: [SettingsSelection; 5] = [
-        SettingsSelection::General,
-        SettingsSelection::Appearance,
+    const ALL: [SettingsSelection; 3] = [
         SettingsSelection::Bluetooth,
         SettingsSelection::System,
         SettingsSelection::User,

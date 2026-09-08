@@ -94,7 +94,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
     let lines = vec![
         section("Global"),
         key("m", "Main menu"),
-        key("c", "Control panel (starts a ride if idle)"),
+        key("c", "Control panel (idle until you start a ride)"),
         key("d", "Database — workouts + session history"),
         key("s", "Settings"),
         key("?", "close this help"),
@@ -481,7 +481,85 @@ fn main_draw(frame: &mut Frame, area: Rect, app: &App) {
 
 // -------------------------------------------------------
 
+/// Idle "ready" panel for the Control screen: shown whenever no ride is in
+/// progress. Surfaces the real trainer connection state and loaded workout and
+/// tells the rider how to start, instead of painting a live dashboard out of
+/// zeros.
+fn render_control_idle(frame: &mut Frame, area: Rect, app: &App) {
+    let (conn_name, conn_state) = app.connection();
+    let conn_style = match &conn_state {
+        BleUiState::Connected => Color::Green,
+        BleUiState::Error(_) => Color::Red,
+        _ => Color::Yellow,
+    };
+
+    let workout_note = match app.workout() {
+        Some(w) => {
+            let name = w.name.clone().unwrap_or_else(|| "Workout".to_string());
+            format!("{name} — {} min", w.total_seconds / 60)
+        }
+        None => "none loaded — pick one in Database → Workouts".to_string(),
+    };
+
+    let block = Block::default()
+        .title(" CONTROL PANEL ")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "  READY — NO RIDE IN PROGRESS  ",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Trainer:  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(conn_name, Style::default().fg(Color::White)),
+            Span::styled(
+                format!("  [{}]", conn_state.label()),
+                Style::default()
+                    .fg(conn_style)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Workout:  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(workout_note, Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Start a ride:  Enter / Space   ·   Pick a workout:  Database (d)",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::styled(
+            "Pair a trainer:  Settings (s) → Bluetooth → Enter to scan",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::styled(
+            "Back:  m   ·   Keybinds:  ?",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center),
+    ];
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
 fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
+    // No ride in progress: show a real status panel instead of a zeroed-out
+    // live dashboard (no made-up numbers — data only ever comes from trainers).
+    if !app.in_ride() {
+        render_control_idle(frame, area, app);
+        return;
+    }
+
     let livedata = app.livedata();
     let userdata = app.userdata();
 
@@ -882,14 +960,25 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let minutes = (livedata.elapsed_secs / 60) % 60;
     let seconds = livedata.elapsed_secs % 60;
 
+    let elev = if livedata.alti > 0.0 {
+        format!("{:.0} m", livedata.alti)
+    } else {
+        "-- (ERG mode)".to_string()
+    };
+    let grad = if livedata.grad.abs() > 0.05 {
+        format!("{:.1} %", livedata.grad)
+    } else {
+        "-- (ERG mode)".to_string()
+    };
+
     let stattext = Paragraph::new(vec![
         Line::from(format!(
             "TIME       {:02}:{:02}:{:02}",
             hours, minutes, seconds
         )),
         Line::from(format!("DIST       {:.1} km", livedata.elapsed_distance)),
-        Line::from(format!("ELEV       {} m", livedata.alti)),
-        Line::from(format!("GRAD       {:.1}%", livedata.grad)),
+        Line::from(format!("ELEV       {elev}")),
+        Line::from(format!("GRAD       {grad}")),
         Line::from(format!("CAL        {} kcal", livedata.calories)),
         Line::from(format!("TSS        {}", livedata.tss)),
         Line::from(format!("IF         {:.2}", livedata.ifac)),
@@ -1018,7 +1107,6 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let (conn_name, conn_state) = app.connection();
     let conn_style = match &conn_state {
         BleUiState::Connected => Color::Green,
-        BleUiState::Simulated => Color::Yellow,
         BleUiState::Error(_) => Color::Red,
         _ => Color::DarkGray,
     };
@@ -1031,14 +1119,6 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
                 format!("  [{}]", conn_state.label()),
                 Style::default().fg(conn_style).add_modifier(Modifier::BOLD),
             ),
-            if conn_state == BleUiState::Simulated {
-                Span::styled(
-                    " (simulated — no trainer)",
-                    Style::default().fg(Color::DarkGray),
-                )
-            } else {
-                Span::raw("")
-            },
         ]),
         Line::from(vec![
             Span::styled("UPTIME    ", Style::default().fg(Color::DarkGray)),
@@ -1345,10 +1425,8 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     });
 
     // Slice the inner sidebar area vertically for text item groups
-    let [general, appearance, bluetooth, system, user, _etc] = Layout::vertical([
+    let [bluetooth, system, user, _etc] = Layout::vertical([
         Constraint::Length(3), // Extra vertical height gives visual breathing room
-        Constraint::Length(3),
-        Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Min(0),
@@ -1370,24 +1448,6 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     // Construct borderless list menu options utilizing modern text prefix icons
-    let generaltxt = Paragraph::new(Line::from(vec![Span::styled(
-        if *selected == SettingsSelection::General {
-            " -> General <- "
-        } else {
-            "    General    "
-        },
-        get_item_style(SettingsSelection::General),
-    )]));
-
-    let appeartxt = Paragraph::new(Line::from(vec![Span::styled(
-        if *selected == SettingsSelection::Appearance {
-            " -> Appearance <- "
-        } else {
-            "    Appearance    "
-        },
-        get_item_style(SettingsSelection::Appearance),
-    )]));
-
     let bttxt = Paragraph::new(Line::from(vec![Span::styled(
         if *selected == SettingsSelection::Bluetooth {
             " -> Bluetooth <- "
@@ -1416,8 +1476,6 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     )]));
 
     // Render menu items directly onto the canvas frame
-    frame.render_widget(generaltxt, general);
-    frame.render_widget(appeartxt, appearance);
     frame.render_widget(bttxt, bluetooth);
     frame.render_widget(systemtxt, system);
     frame.render_widget(usertxt, user);
@@ -1429,18 +1487,11 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     });
 
     let content = match selected {
-        SettingsSelection::General => Paragraph::new(format!(
-            "General Settings\n----------------\n[ ] Auto-Save Enabled\n[ ] Check for Updates"
-        )),
-        SettingsSelection::Appearance => Paragraph::new(format!(
-            "Appearance Settings\n-------------------\nTheme: Dark Mode\nFont Size: 12"
-        )),
         SettingsSelection::Bluetooth => {
             let (name, state) = app.connection();
             let state_label = state.label().to_string();
             let state_color = match &state {
                 BleUiState::Connected => Color::Green,
-                BleUiState::Simulated => Color::Yellow,
                 BleUiState::Error(_) => Color::Red,
                 _ => Color::DarkGray,
             };
@@ -1463,14 +1514,6 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Line::from(vec![
                     Span::styled("Status:  ", Style::default().fg(Color::DarkGray)),
                     Span::styled(state_label, Style::default().fg(state_color)),
-                    if state == BleUiState::Simulated {
-                        Span::styled(
-                            " (simulated — no trainer)",
-                            Style::default().fg(Color::DarkGray),
-                        )
-                    } else {
-                        Span::raw("")
-                    },
                 ]),
             ];
             if !detail.is_empty() {
