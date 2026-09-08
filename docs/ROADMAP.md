@@ -1,129 +1,119 @@
-# Olympus Roadmap — to 1.0 and Beyond
+# Olympus Roadmap — 1.0 Shipped, dashed toward the Complete Training App
 
 > **Vision:** *The TrainerRoad for terminals.* A free, offline-first, privacy-minded TUI that drives a Tacx Flux S2 (or any FTMS trainer) with flawless ERG execution and writes a Garmin-valid `.fit` you can drop into Garmin Connect → Strava. No video worlds, no MMO server, no social feed — just perfect workouts.
 
-**Current version:** `1.0.0-rc1` (`src/app.rs:467`) · dashed toward `1.0.0`
-**Minimum viable 1.0 promise:** Fresh install → pair Flux S2 → pick a workout → ride ERG with live Braille graphs and pause/skip → finish with Save/Discard summary → find a FIT in `data/.fit` that Garmin/Strava accept *and* see the ride in local history/stats. No JSON hand-editing, no restart on Bluetooth hiccup.
+**Current version:** `1.0.0-rc1` (`App::version_static()` · `src/app.rs`) · dashed toward `1.1.0`
+**1.0 MVP promise — met.** Fresh install → pair trainer → pick a workout → ride ERG with live Braille graphs and pause/skip/nudge/hold → finish with a Save/Discard summary → a FIT lands in `data/.fit` that Garmin/Strava accept → the ride shows up in local history + stats. No JSON hand-editing, no restart on a Bluetooth hiccup.
 
-This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy / Tacx Training / TrainerRoad / Zwift (see analysis in PR discussion). It is the **locked** build plan.
+This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy / Tacx Training / TrainerRoad / Zwift. Phases 0–6 shipped on 2026-09-08; the "complete training app" gap work is tracked here as Phases 7–13.
 
 ---
 
-## 0. Competitive Positioning (Why This Roadmap)
+## 0. Competitive Positioning
 
 | Competitor | What they are best at | What Olympus does **not** try to replicate |
 |---|---|---|
-| **Strava** | Social feed, segments, 135 M users | Social graph, clubs, Local Legends. Olympus *exports to* Strava; it doesn't host. |
-| **Rouvy** | 1 300+ real-video AR routes, Route Creator | Video streaming / AR overlay. Terminal Braille `Marker::Braille` `src/render.rs:41` cannot compete. |
+| **Strava** | Social feed, segments, 135 M users | Social graph, clubs, segments hosting. Olympus *exports to* Strava; it doesn't host. |
+| **Rouvy** | 1 300+ real-video AR routes | Video / AR overlay. Terminal Braille cannot compete. |
 | **Tacx Training** | OEM Flux S2 support + Garmin Connect gateway | Being Tacx-locked. Olympus supports any FTMS trainer and stays offline. |
-| **TrainerRoad** | Adaptive AI, Plan Builder, 3 000 workouts | Full AI coaching. Olympus ships a deterministic `best20×0.95` FTP heuristic `src/math.rs:78` — 80 % of the value, 5 % of the effort. |
-| **Zwift** | 12 worlds, XP/Drops, 1 000s concurrent racing, drafting | MMO worlds, physics, anti-cheat. Integrate *out* via FIT. |
+| **TrainerRoad / Zwift** | Adaptive AI, 3 000 workouts, virtual worlds | Full AI coaching, MMO racing. Olympus ships a deterministic `best20×0.95` FTP heuristic and integrates *out* via FIT. |
 
-**Olympus wins on:** precision ERG (`src/ble.rs:464` FTMS `0x03`), accurate NP/IF/TSS/kJ (`src/math.rs:92`, `src/app.rs:634`), `rusqlite` + `samples` retro-analytics (`src/data.rs:137`), headless `tokio` + RPi-in-garage, zero subscription.
-
----
-
-## 1. What Is Real Today (v0.1.5 inventory)
-
-**Screens** `src/render.rs:308` / `src/app.rs:154` / `src/nav.rs:144`:
-- **Main** — ASCII `OLYMPUS` `332`, 6-item nav (`NewRide → start_ride(true)`, Control, Workouts→Database, Settings, Stats, Quit→confirm `121`) + globals `m/c/d/s` `src/app.rs:1028`.
-- **Control** `392` — Big Power/HR (`tui-big-text` `467`), Braille history `tail_points()` `41`, zone gauges `726`, Ride Stats `TIME/DIST/ELEV/GRAD/CAL/TSS/IF` `778`, Intervals `w.step_at(elapsed)` `822`, System `BT [STATE]` color `926` + `UPTIME/FTP/MAX HR`, Paused banner `978`. Keys `Space/Enter` `toggle_pause()` `530`, `Q` `open_summary()` `539`.
-- **Database** `1008` — two-tab `Workouts|Sessions` `232`; Workouts from `data/workouts/*.zwo|*.erg` `src/data.rs:329`; Sessions table `fit_sessions` 50 newest `src/data.rs:285`; drill-down is no-op `src/app.rs:864`.
-- **Settings** `1160` — sidebar `General/Appearance/Bluetooth/System/User` `src/nav.rs:95`; Bluetooth live `state.label()` `1283`, User profile `Name/Weight/Height/FTP/MaxHR` editable with clamped `commit_edit()` `347` + `save_profile()` JSON `119`. General/Appearance/System stubs.
-- **Stats** `1399` — stub `Paragraph("Stats\n------")`; `StatsSelection{Overview,Rides}` `124` unused.
-
-**Engine:** `LiveData` `src/app.rs:14` + `power/hr/rpm/vel_history` cap 1200/300/300/300 `218`, `recompute_metrics()` `634`, `tick_second()` `713` + `accumulate_distance()` `734` frozen when `is_recording()==Screen::Control && Running` `500`, `CrankTracker` cadence `src/ble.rs:40` (`Δrevs*1024*60/Δtime`), `find_trainer()` FTMS scan `264`, `set_target_power()` `464`, `emit_simulated()` fallback `488`, `.erg` KV `113` + `.zwo` XML `190` (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP` `311`), FIT writer `FileId 0 + Record 20 + Session 18` + CRC `src/fit_writer.rs:191` round-trip tested `356`, SQLite `fit_sessions + samples` `137` + `save_ride()` `200`, `finish_ride()` `src/main.rs:231` with `Save/Discard/Resume` overlay `src/render.rs:162`.
-
-**Debt / stubs to fix before 1.0:** `is_loading()` dead `src/app.rs:566` → `render_loading()` `77` never shown; `paused_seconds` `417` never incremented; `ELEV/GRAD/Egain` always `0.0` `src/main.rs:143`; FIT `total_calories=0` `src/fit_writer.rs:223`; `env_logger` never `init()`; `crossbeam-channel`/`uuid`/`serde-xml-rs` shadowed by `xml` unused `Cargo.toml:19`.
+**Olympus wins on:** precision ERG (`SetTargetPower` + `ramp_target` FTMS `0x03/0x2AD9`, `src/ble.rs`), accurate NP/IF/TSS/kJ (`src/math.rs`), `rusqlite` + per-second `samples` retro-analytics (`src/data.rs`), headless `tokio` + RPi-in-garage, zero subscription, terminal-native.
 
 ---
 
-## 2. v1.0 — The Build Plan
+## 1. Shipped — 1.0 · Phases 0–6
 
-### Phase 0 — Correctness & Hygiene (1–2 days) · *unblocks everything*
+| Phase | Delivered in | Headline |
+|---|---|---|
+| **0–2 — Correctness, ride control, BLE.** | `3ef2f08` | FIT `total_calories` from avg power + `start` from first sample; `env_logger::init()`; `ensure_data_dirs()` on boot; dead `render_loading` removed; `--help`/`--version` CLI; deps trimmed (dropped `crossbeam-channel`, `serde-xml-rs`; `uuid` kept for GATT UUIDs). Ride control: `+/-` ±5 W ERG nudge, `n`/`p` skip/prev step, `e` ERG↔hold, control footer key hints, `paused_seconds` accrual, tests. BLE: Settings `Scan` button, error banner, `Simulated` yellow qualifier, `ramp_target` 2–3 s linear ramp on target changes. |
+| **3 — History & Stats.** | `9180f34` | Sessions drill-down (Braille power(t) vs target(t) replay from `samples`); Stats screen: weekly TSS bars (last 8 weeks), PR curve `1m/5m/20m`, volume km/h — all from local SQLite. |
+| **4 — Content & FTP.** | `7f71b0b` | 4 curated workouts (`ftp_test_20min`, `sweet_spot`, `vo2max_30_30`, `recovery`); Workouts lists show `TSS \| duration`; summary prompt `best20×0.95 → Update FTP? [Y/N]`. |
+| **5 — Export (manual).** | `67f5165` | Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect`; manual export docs. |
+| **6 — Polish & release.** | `d8f76a1` | `?` keybind help overlay; bump to `1.0.0-rc1` (app + Cargo.toml); tag `v1.0.0-rc1`. |
 
-- [ ] `src/fit_writer.rs:223` compute `total_calories = calories_kcal(kJ)` from `LiveData.calories` instead of `0`; stamp `start = samples[0].timestamp` not `FitWriter::new()` `128`
-- [ ] `src/main.rs:51` call `env_logger::init()` before `init().await` (today `log::error!` is silent)
-- [ ] Ensure `data/.fit`, `data/olympus.db`, `data/workouts` on boot (`init_db` `src/data.rs:139` already `create_dir_all` for `data/`; extend)
-- [ ] Remove `is_loading`/`render_loading` or wire to `Workout→FTMS ready` gate only (`src/app.rs:566`+`src/render.rs:77` — dead code confuses contributors)
-- [ ] Cargo cleanup: drop `crossbeam-channel`, `uuid`, `serde-xml-rs` (keep `xml` `src/erg.rs:193`) `Cargo.toml:19`; add `--help`/`--version` to `resolve_workout()` `src/main.rs:27`
+Tests: **70 passing**, clippy baseline **20 pre-existing warnings**. Workouts directory: `data/workouts/*.zwo`.
 
-### Phase 1 — Ride Control (the daily-driver gap, 3–4 days)
-
-- [ ] `src/app.rs:969 handle_control_key()` add `+/-` ±5 W nudge to `livedata.target_pwr` + `cmd_tx SetTargetPower`, `n` next step / `p` prev step (jump `elapsed_secs` to `step.end_secs`), `e` toggle ERG↔hold (hold last target; SIM slope deferred — see Phase 7)
-- [ ] `src/ble.rs:464` 2–3 s linear ramp on `SetTargetPower` (avoid Flux jolt on 300 W jump)
-- [ ] `src/app.rs:713` increment `paused_seconds` while `Paused`; TSS/dist denominator becomes `elapsed - paused_seconds` `src/math.rs:126` (today `paused_seconds` cleared `510` but never counted)
-- [ ] `src/render.rs:392` footer hint `[+/-]W [n/p]step [e]ERG [Space]pause [Q]finish` + keep Paused banner `978`
-- [ ] Tests in `src/app.rs:1063` for `erg_nudge_applies`, `skip_advances_step`, `paused_excluded_from_tss`
-
-### Phase 2 — Trainer Pairing Robustness (2 days)
-
-- [x] `Settings → Bluetooth` `Enter → BleCommand::Scan` `src/ble.rs:91` (today static `src/render.rs:1160`)
-- [x] Control footer error banner when `BleState::Error` `src/ble.rs:103` + `Simulated` yellow watermark `src/render.rs:926` already — add qualifier `(simulated — no trainer)` `1283`
-- [ ] *(deferred from 1.0 — see below)* second `HRM 0x2A37` peripheral merge for chest strap — keep single-peripheral `find_trainer()` `264` for 1.0; document as 1.1.
-
-### Phase 3 — History & Stats (minimal, 2–3 days)
-
-- [x] `Database Sessions Enter` `src/app.rs:864` → detail screen (`Screen::Stats` reuse or new `SessionDetail` `src/app.rs:154`) showing `FitSession` fields + Braille `power(t)` vs `target(t)` replay from `samples` `SELECT t,power FROM samples WHERE session_id=? ORDER BY t` `src/data.rs:285` via `line_chart()` `src/render.rs:41`
-- [x] `src/render.rs:1399 stats_draw` replace stub: **weekly TSS bars (last 8 weeks)**, **PR curve `1m/5m/20m`** scanning `samples` (`max(power) WHERE t window`), **volume km/h** — all from `fit_sessions+samples` indexed `samples.session_id` `src/data.rs:185`. No seasons/interval adherence until post-1.0.
-
-### Phase 4 — Content & FTP (2 days)
-
-- [x] Ship 4 workouts in `data/workouts/`: `ftp_test_20min.zwo` *(the one for 1.0)*, `sweet_spot.zwo` (exists), `vo2max_30_30.zwo`, `recovery.zwo` — all validated via `erg::parse_zwo_workout` `190`
-- [x] Workouts list subtitle `TSS | duration` per row (`TSS ≈ Σ(target/FTP)²·dur/3600·100` on `list_workout_files` load `src/data.rs:329`)
-- [x] Heuristic in `render_summary` `src/render.rs:162`: `best20 = max rolling_mean(power_history,1200)`; if `best20*0.95 > ftp+5` prompt `Update FTP to X? [Y/N]` — deterministic 80 % of TrainerRoad AI Detection, no ML.
-
-> **FTP test choice for 1.0:** Single **20-min test** (`Warmup 10m + 20m all-out + Cooldown`) for simplicity. It reuses existing `rolling_mean(...,1200)` `src/app.rs:498` and `≤10→×FTP` `src/erg.rs:311`. Ramp test added in 1.1.
-
-### Phase 5 — Export (1.0 = manual; bridge in 1.1)
-
-- [x] Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect (auto-syncs to Strava)` — **no OAuth in 1.0**. Garmin Connect direct upload deferred to 1.1 (it then fans out to Strava, so Strava direct is never needed separately; Zwift direct also 1.1 if desired).
-- [x] Document manual flow in `docs/README.md` (`xdg-open data/.fit`).
-
-### Phase 6 — Polish & Release (½ day)
-
-- [x] `?` help overlay via `centered_rect` `src/render.rs:58` enumerating `m/c/d/s` globals `src/app.rs:1028` + `Space/Q/+/−/n/p/e` ride keys
-- [x] `render_summary` `src/render.rs:162` FTP suggestion line + export hint
-- [x] Bump `0.1.5` `src/app.rs:467` → `1.0.0-rc1`, `git tag v1.0.0-rc1`
+### What a user can do today
+Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (or ride simulated), pick one of 4 workouts or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
 
 ---
 
-## 3. Out of 1.0 — Tracked, Not Built
+## 2. Build Plan — Phases 7–13 (the complete training app)
 
-These are intentionally **not** in 1.0 (see competitive table). Build them after the MVP is solid.
+> **Locked slice: Phases 7–10** (source-of-truth → trust → HR → FTP ramp). Version gate: bump `1.0.0-rc1` → `1.0.0`, tag `v1.0.0` when Phase 10 lands. Phases 11–13 follow, then `1.1.0`.
 
-- **GPX / SIM gradient mode** — Requires GPX parsing, gradient→watts physics, Braille elevation profile. 1.0 stays ERG-only; `ELEV/GRAD` `0.0` with `TODO SIM` note. No average cyclist needs it (per project owner, an ambitious rider).
-- **Virtual shifting / Cog+Click** — Zwift 2025 moat; needs second FTMS field.
-- **Workout creator TUI beyond 4 files, Training plan calendar, Adaptive AI / Plan Builder** — TrainerRoad's moat; needs weeks of history + ML. 1.0 ships static workouts; plans deferred.
-- **Power curve history, seasons compare, interval adherence (Rouvy Execution Score), fitness/freshness, VO2max** — Add schema (`load/fatigue` columns) in 1.0, compute in 1.1.
-- **Second HR strap / dual-peripheral merge** — Deferred to 1.1 (simplest path: keep single peripheral for 1.0).
-- **Mobile / companion app** — `ratatui` `CrosstermBackend` `src/boot.rs:37` is terminal-only; companion is a different product.
-- **Multi-user / profiles** — Single `profile.json` + `username` footer `src/render.rs:174` is fine.
-- **Garmin/Strava/Zwift auto-upload** — FIT is already Garmin-valid `src/fit_writer.rs:356`; OAuth (`oauth2`/`reqwest`) deferred to 1.1 with token at `data/user/strava.json` (never in repo). Manual upload is 1.0.
+### Phase 7 — Docs = source of truth (this commit, small)
+- [x] Grep-verify every "shipped" claim before writing (the old checkboxes drifted — Phases 0–2 were done but still `[ ]`).
+- [x] Compact Phases 0–6 into the table above; reference code **function-first** (`handle_control_key`, `ramp_target`, `version_static`) so line numbers don't rot.
+- [x] **Anti-drift rule:** code landings update ROADMAP/README checkboxes in the *same commit*.
+- Files: `docs/ROADMAP.md`, `docs/README.md`. Verify: `cargo test`.
+
+### Phase 8 — Trust the numbers (small, high credibility)
+- [ ] Pin pause-exclusion end-to-end: `paused_seconds` already freezes clock + accrues (app.rs:775, `paused_seconds_excluded_from_ride_time` app.rs:1947) — add the missing assertion that `math::tss`/distance denominators receive `elapsed − paused`.
+- [ ] `ELEV/GRAD` are always `0.0` in ERG mode — render `--` with a "SIM planned" note instead of a confident zero.
+- Files: `src/app.rs`, `src/math.rs`, `src/render.rs`. Verify: new TSS-pause test, updated render test.
+
+### Phase 9 — HR strap merge (medium–large, biggest data-quality gap)
+- [ ] Second peripheral `0x2A37` Heart Rate Measurement alongside the FTMS trainer; merge into `LiveData.hr` with source priority (strap wins when present); cadence stays `CrankTracker`.
+- [ ] `ble.rs`: dual GATT subscription, peripheral grouping by service UID; rename `find_trainer` → `find_sensors`; Settings shows strap connect state.
+- [ ] Unit tests: strap-over-trainer priority, dropped-strap fallback, simulated unchanged.
+- Risk: multi-peripheral flake on BlueZ → reuse Phase 0–2 reconnect/Scan; keep single-trainer ERG until stable.
+
+### Phase 10 — FTP ramp test + first-ride onboarding (small–medium)
+- [ ] Ship `data/workouts/ramp_test.zwo` (**Warmup → 20 W/min Ramp → Cooldown**) via the existing `Ramp` parser (`src/erg.rs`).
+- [ ] Detection formula: **FTP = 0.75 × best 60-s power** of the final ramp minutes, reusing `best_rolling_mean` and surfacing through the existing `confirm_ftp` summary prompt (Phase 4).
+- [ ] Onboarding: with no session history + no trainer, Main suggests the first ride (`ftp_test_20min` or the ramp) on top of the existing "(simulated — no trainer)" qualifier.
+- Verify: ramp-parse test (like `shipped_workouts_parse_and_have_totals`), FTP-detection test, onboarding render test.
+
+### Phase 11 — Distribution (medium)
+- [ ] Release script: `cargo build --release` → zip of binary + `data/workouts` + README (optional `.deb`); `cargo install --path .` path documented.
+- [ ] Per-OS Bluetooth setup notes — Windows/macOS (grant Bluetooth permission; no `bluetoothd -E` tweak) alongside the existing Linux guide.
+- Verify: release script runs; `cargo install` smoke test; docs accurate.
+
+### Phase 12 — Auto-upload to Strava (large)
+- [ ] `reqwest` + `oauth2` (PKCE); token + refresh persisted at `data/user/strava.json`, **gitignored, never committed** (mirrors `profile.json` location).
+- [ ] On Save (`finish_ride`) upload the FIT via Strava multipart; offline → queue the file and retry next boot.
+- [ ] Strava-first: Garmin Connect has no public upload API, so Garmin→Strava fan-out stays manual; a Zwift bridge is out of scope here.
+- Verify: token-refresh unit tests; one manual upload e2e against a real account.
+
+### Phase 13 — Training depth (large, sub-checklist)
+- [ ] In-app workout creator (TUI editor → writes `data/workouts/name.zwo`).
+- [ ] Plans / weekly calendar reusing `samples` + TSS; `load`/`fatigue` schema columns → fitness/freshness chart.
+- [ ] Interval-adherence score (Rouvy-execution style); power-curve history + season compare.
+- [ ] Virtual shifting / second FTMS field — staged *after* Garmin accepts a shifting-flagged FIT.
+- Each sub-item ships with tests + doc checkbox (Phase 7 rule).
+
+---
+
+## 3. Tracked, Not Built
+
+- **GPX / SIM gradient mode** — needs GPX parsing, gradient→watts physics, Braille elevation profile. ERG stays default; `ELEV/GRAD` show `--` (Phase 8) until then.
+- **Adaptive AI / Plan Builder full moat** — the deterministic `best20×0.95` FTP heuristic is the shipped 80 %; ML/plan-generation needs weeks of history and stays beyond.
+- **Mobile / companion app** — terminal-only product; a companion is a different product.
+- **Multi-user / profiles** — single `profile.json` is fine for 1.0.
+- **Garmin Connect direct upload** — no public API; Strava path in Phase 12.
 
 ## 4. Dropped Entirely — Do Not Build
 
-- **3D / Video / AR worlds** (Zwift 12 worlds, Rouvy 1 300 videos, Tacx 500 HD) — Terminal `Braille` cannot compete; at most a GPX→sparkline later.
-- **MMO racing / live opponents / drafting** — Needs server, physics, anti-cheat. Integrate *out* via FIT.
-- **Social feed / kudos / clubs / segments hosting** — Strava network effect (135 M users). Olympus uploads *to* Strava; it never hosts.
-- **Subscription / marketplace** — Contradicts local SQLite + `profile.json` git-trackable + RPi garage `ssh` promise. Prune `crossbeam-channel`/`uuid`/`serde-xml-rs`.
-- **Dead `render_loading()` overlay** `src/render.rs:77` — Drop or keep only as `Workout→FTMS ready` gate.
-
----
+- **3D / video / AR worlds** (Zwift 12 worlds, Rouvy 1 300 videos) — terminal Braille cannot compete.
+- **MMO racing / live opponents / drafting** — needs server, physics, anti-cheat; Olympus integrates *out* via FIT.
+- **Social feed / kudos / clubs / segments hosting** — Strava's network effect; Olympus uploads *to* Strava, never hosts.
+- **Subscription / marketplace** — contradicts the local SQLite + git-tracked `profile.json` + RPi-garage promise.
 
 ## 5. Risks & Mitigations
 
-- **BT flake on Linux BlueZ** → `Scan` button + `Simulated` fallback `src/ble.rs:488` + heartbeat `253` + `docs/README.md` `bluetoothd -E` guide. Test with `bluetoothctl` on Flux S2.
-- **FIT rejected by Garmin** → `fitparser` round-trip `src/fit_writer.rs:356` extended to assert `total_calories` + `start_ts`.
-- **TSS inflation when paused** → `paused_seconds` exclusion (Phase 1).
-- **Stats perf on 1 000s samples** → `LIMIT` + indexed `samples.session_id` `src/data.rs:185` + pre-aggregated `fit_sessions` summary.
-
----
+- **BT flake on Linux BlueZ** (single peripheral) → `Scan` button + `Simulated` fallback + heartbeat (live). Phase 9 adds a second peripheral — grow cautiously, keep single-trainer ERG until stable.
+- **FIT rejected by Garmin** → `fitparser` round-trip tests (extend to assert `total_calories` + `start`); Phase 12 asserts on the upload API response.
+- **TSS inflation when paused** → Phase 8 pins the exclusion as a test.
+- **Stats perf on thousands of samples** → `LIMIT` + indexed `samples.session_id` (live); Phase 13 reuses pre-aggregated `fit_sessions`.
+- **Strava OAuth token exposure** → token file gitignored, least-privilege scopes, refresh-token rotation, never in logs.
+- **Roadmap drift** → Phase 7 rule: same-commit doc updates + grep-verify shipped claims before writing.
 
 ## 6. How to Use This Roadmap
 
-- Issues/PRs should reference a Phase (e.g. `Phase 1: +/- ERG nudge`).
-- 1.0 is feature-frozen to the checkboxes above; anything else targets `1.1` label.
-- When a Phase lands, update `docs/README.md` Feature Status and bump `src/app.rs:467` version.
+- Issues/PRs reference a Phase (e.g. `Phase 9: HR strap merge`).
+- 1.0 is shipped; the **locked slice is Phases 7–10**. Anything else targets `1.1` or the backlog beyond.
+- When a Phase lands, update `docs/README.md` Feature Status **in the same commit** and bump the version string at `App::version_static()`.
 
-*Last updated: 2026-09-04 · Owner: @amundgaard · Status: locked for build.*
+*Last updated: 2026-09-08 · Owner: @amundgaard · Status: 1.0 shipped · Phases 7–10 locked.*

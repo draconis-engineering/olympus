@@ -99,7 +99,8 @@ explorer data\.fit        # Windows
 
 1. Drag the newest `ride_*.fit` into your browser at <https://connect.garmin.com>.
 2. Garmin Connect auto-syncs to Strava (and your watches) from there.
-3. Direct Garmin upload and a Zwift bridge are deferred to 1.1 — in 1.0
+3. Direct Garmin upload is not planned (Garmin has no public upload API);
+   **Strava auto-upload** (OAuth) is Phase 12 in the roadmap — until then
    Olympus never talks to a cloud service.
 
 ### Bluetooth / Smart trainer (Linux)
@@ -146,14 +147,17 @@ cadence, heart rate and speed, and keeps the FIT/SQLite persistence working.
 - [x] Profile & Bluetooth settings (`src/render.rs:1160`)
 - [x] Ride lifecycle: `Running/Paused/Summary` (`src/app.rs:170`) — pause (`Space`), summary (`Q` → `Save/Discard/Resume` `src/render.rs:162`), `is_recording()` gate `500`, `Paused` banner `978`
 
-### Next — v1.0 (see `ROADMAP.md`)
+### The 1.0 roadmap is shipped — Phases 0–6 all landed (see `ROADMAP.md` §1)
 
-- [x] **Correctness:** `total_calories` fix (`src/fit_writer.rs:223`), `env_logger::init()`, dead-code cleanup (`is_loading`/`render_loading`)
-- [x] **Ride control:** `+/-` ERG nudge, `n`/`p` skip step, `e` ERG↔hold (Phase 1)
-- [x] **BT robustness:** `Scan` button in Settings, error banner, `Simulated` qualifier (Phase 2)
-- [x] **History & Stats:** Sessions drill-down (samples replay) + minimal Stats (weekly TSS, PR `1m/5m/20m`) (Phase 3)
-- [x] **Content & FTP:** 4 curated workouts + `TSS|duration` subtitles + `best20×0.95` FTP suggestion (Phase 4, single `ftp_test_20min.zwo` for 1.0)
-- [x] **Export:** Manual `data/.fit` hint in summary; Garmin/Strava/Zwift auto-upload deferred to 1.1 (Phase 5)
-- [x] **Polish:** `?` help overlay, `1.0.0-rc1` bump (Phase 6)
+Correctness + ride control + BLE (`3ef2f08`), History & Stats (`9180f34`),
+Content & FTP (`7f71b0b`), manual Export (`67f5165`), Polish + `1.0.0-rc1`
+(`d8f76a1`).
+
+### Next — the complete training app (`ROADMAP.md` §2, Phases 7–13)
+
+- [ ] **Locked slice · Phases 7–10:** docs as source of truth, pause-TSS/ELEV trust fixes, HR-strap merge, FTP ramp test + first-ride onboarding — then bump `1.0.0`, tag `v1.0.0`
+- [ ] **Phase 11 — Distribution:** release binaries + per-OS Bluetooth setup notes
+- [ ] **Phase 12 — Strava auto-upload:** OAuth (PKCE), queued retry, token gitignored
+- [ ] **Phase 13 — Training depth:** workout creator, plans/fitness-freshness, adherence, virtual shifting
 
 > Full phased plan, competitive gap table, and out-of-scope list: [`ROADMAP.md`](ROADMAP.md)
