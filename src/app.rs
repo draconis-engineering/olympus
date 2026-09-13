@@ -427,6 +427,8 @@ pub struct App {
     pub ble: BleUiState,
     /// Display name of the connected trainer (empty when none).
     pub trainer_name: String,
+    /// Display name of the connected HR strap (empty when none).
+    pub strap_name: String,
     /// Set by the end-of-ride dialog so the main loop knows to persist or
     /// discard the recording. `Some(true)` = save, `Some(false)` = discard.
     pub pending_save: Option<bool>,
@@ -467,6 +469,7 @@ impl App {
             ride: RideState::Idle,
             ble: BleUiState::Idle,
             trainer_name: String::new(),
+            strap_name: String::new(),
             pending_save: None,
             paused_seconds: 0,
             last_workout_name: None,
@@ -529,6 +532,12 @@ impl App {
             self.trainer_name.clone()
         };
         (name, self.ble.clone())
+    }
+
+    /// Whether an HR strap is currently paired. While it is, the strap is the
+    /// authoritative HR source (trainer-side HR is suppressed in the driver).
+    pub fn strap_connected(&self) -> bool {
+        self.ble == BleUiState::Connected && !self.strap_name.is_empty()
     }
 
     // ---------------------------------------------------------------------
@@ -1297,6 +1306,28 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strap_connected_reflects_strap_name() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        assert!(!app.strap_connected());
+
+        // Trainer + strap both live: the strap reads connected.
+        app.ble = BleUiState::Connected;
+        app.trainer_name = "Tacx Flux S2".into();
+        app.strap_name = "Polar H10".into();
+        assert!(app.strap_connected());
+
+        // Dropped strap (driver reports strap: None): falls back to
+        // trainer-only HR, and the UI shows no strap.
+        app.strap_name.clear();
+        assert!(!app.strap_connected());
+
+        // Strap name set but the driver is still scanning: not connected yet.
+        app.ble = BleUiState::Scanning;
+        app.strap_name = "Polar H10".into();
+        assert!(!app.strap_connected());
+    }
 
     #[test]
     fn database_cursor_stays_in_bounds_empty() {

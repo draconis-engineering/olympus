@@ -32,10 +32,10 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 | **5 — Export (manual).** | `67f5165` | Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect`; manual export docs. |
 | **6 — Polish & release.** | `d8f76a1` | `?` keybind help overlay; bump to `1.0.0-rc1` (app + Cargo.toml); tag `v1.0.0-rc1`. |
 
-Tests: **70 passing**, clippy baseline **18 pre-existing warnings** (dropped 2 with the simulated-data removal). Workouts directory: `data/workouts/*.zwo`.
+Tests: **75 passing**, clippy baseline **18 pre-existing warnings** (dropped 2 with the simulated-data removal). Workouts directory: `data/workouts/*.zwo`.
 
 ### What a user can do today
-Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (no trainer attached is fine — the idle Control panel shows `READY — NO RIDE IN PROGRESS` instead of fabricated numbers), pick one of 4 workouts or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
+Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (an HR strap like a Polar H10 pairs automatically as a second device — no trainer attached is fine, the idle Control panel shows `READY — NO RIDE IN PROGRESS` instead of fabricated numbers), pick one of 4 workouts or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
 
 ---
 
@@ -56,9 +56,9 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trai
 - Files: `src/app.rs`, `src/ble.rs`, `src/math.rs`, `src/render.rs`, `src/main.rs`, `src/nav.rs`, `Cargo.toml`. Verify: new TSS-pause test, idle-render path covered by the existing control smoke tests.
 
 ### Phase 9 — HR strap merge (medium–large, biggest data-quality gap)
-- [ ] Second peripheral `0x2A37` Heart Rate Measurement alongside the FTMS trainer; merge into `LiveData.hr` with source priority (strap wins when present); cadence stays `CrankTracker`.
-- [ ] `ble.rs`: dual GATT subscription, peripheral grouping by service UID; rename `find_trainer` → `find_sensors`; Settings shows strap connect state.
-- [ ] Unit tests: strap-over-trainer priority, dropped-strap fallback, no-trainer idle state.
+- [x] Second peripheral `0x2A37` Heart Rate Measurement alongside the FTMS trainer; merged into `LiveData.hr` with source priority (strap wins when present); cadence stays `CrankTracker`.
+- [x] `ble.rs`: dual GATT subscription + grouped scan (`find_sensors` classifies peripherals by service UID: FMS/CPS → trainer, HRM-only → strap); `Connected { trainer, strap }` reports both names; Settings + System show the strap row.
+- [x] Unit tests: strap-over-trainer priority (`parse_notification` suppress path + end-to-end merge), dropped-strap fallback (trainer HR resumes), no-trainer idle state (Phase 8).
 - Risk: multi-peripheral flake on BlueZ → reuse Phase 0–2 reconnect/Scan; keep single-trainer ERG until stable.
 
 ### Phase 10 — FTP ramp test + first-ride onboarding (small–medium)

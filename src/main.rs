@@ -205,24 +205,48 @@ async fn main() -> io::Result<()> {
         // Drain trainer connection-state changes into the app for display.
         while let Ok(state) = state_rx.try_recv() {
             match state {
-                BleState::Idle => app.ble = BleUiState::Idle,
-                BleState::Scanning => app.ble = BleUiState::Scanning,
-                BleState::Connecting => app.ble = BleUiState::Connecting,
-                BleState::Connected { name } => {
-                    app.ble = BleUiState::Connected;
-                    app.trainer_name = name;
+                BleState::Idle => {
+                    app.ble = BleUiState::Idle;
+                    app.strap_name.clear();
                 }
-                BleState::Error(e) => app.ble = BleUiState::Error(e),
+                BleState::Scanning => {
+                    app.ble = BleUiState::Scanning;
+                    app.strap_name.clear();
+                }
+                BleState::Connecting => {
+                    app.ble = BleUiState::Connecting;
+                    app.strap_name.clear();
+                }
+                BleState::Connected { trainer, strap } => {
+                    app.ble = BleUiState::Connected;
+                    app.trainer_name = trainer.unwrap_or_default();
+                    app.strap_name = strap.unwrap_or_default();
+                }
+                BleState::Error(e) => {
+                    app.ble = BleUiState::Error(e);
+                    app.strap_name.clear();
+                }
             }
         }
 
         // Process incoming telemetry as it arrives (avoids blocking the loop).
+        // Telemetry is emitted per-characteristic, so any single sample may
+        // carry only some fields (e.g. strap HR, or trainer power + cadence).
+        // We merge rather than overwrite, keeping the last-known value of every
+        // other field — HR never flickers to 0 between power notifications.
         while let Ok(t) = rx.try_recv() {
+            let has_data = t.power.is_some()
+                || t.cadence.is_some()
+                || t.heart_rate.is_some()
+                || t.speed.is_some();
+            if !has_data {
+                continue;
+            }
             app.livedata.update(
-                t.power.unwrap_or(0),
-                t.cadence.unwrap_or(0),
-                t.heart_rate.unwrap_or(0),
-                t.speed.unwrap_or(0.0),
+                t.power.unwrap_or(app.livedata.crnt_pwr),
+                t.cadence.unwrap_or(app.livedata.crnt_rpm),
+                t.heart_rate.unwrap_or(app.livedata.crnt_hr),
+                t.speed.unwrap_or(app.livedata.crnt_vel),
                 0.0,
                 0.0,
                 0.0,

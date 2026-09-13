@@ -531,6 +531,17 @@ fn render_control_idle(frame: &mut Frame, area: Rect, app: &App) {
             ),
         ]),
         Line::from(vec![
+            Span::styled("Strap:    ", Style::default().fg(Color::DarkGray)),
+            if app.strap_connected() {
+                Span::styled(app.strap_name.clone(), Style::default().fg(Color::White))
+            } else {
+                Span::styled(
+                    "none — HR from the trainer (if it reports one)",
+                    Style::default().fg(Color::Gray),
+                )
+            },
+        ]),
+        Line::from(vec![
             Span::styled("Workout:  ", Style::default().fg(Color::DarkGray)),
             Span::styled(workout_note, Style::default().fg(Color::Gray)),
         ]),
@@ -1121,6 +1132,14 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
             ),
         ]),
         Line::from(vec![
+            Span::styled("STRAP     ", Style::default().fg(Color::DarkGray)),
+            if app.strap_connected() {
+                Span::styled(app.strap_name.clone(), Style::default().fg(Color::Green))
+            } else {
+                Span::styled("none", Style::default().fg(Color::DarkGray))
+            },
+        ]),
+        Line::from(vec![
             Span::styled("UPTIME    ", Style::default().fg(Color::DarkGray)),
             Span::raw(uptime_str),
         ]),
@@ -1516,6 +1535,26 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                     Span::styled(state_label, Style::default().fg(state_color)),
                 ]),
             ];
+            // Strap row: an HR strap pairs as a second peripheral; while it is
+            // live it is the authoritative heart-rate source.
+            if app.strap_connected() {
+                lines.push(Line::from(vec![
+                    Span::styled("Strap:   ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(app.strap_name.clone(), Style::default().fg(Color::White)),
+                    Span::styled(
+                        "  [CONNECTED]",
+                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled("Strap:   ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        "none — HR comes from the trainer",
+                        Style::default().fg(Color::Gray),
+                    ),
+                ]));
+            }
             if !detail.is_empty() {
                 lines.push(Line::from(Span::styled(detail, Color::Red)));
             }

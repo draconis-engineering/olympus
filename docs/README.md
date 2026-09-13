@@ -50,9 +50,9 @@ The terminal view runs at 60 fps (1 Hz ride-engine tick) using Unicode Braille f
 
 - **Header/Footer** (`src/render.rs:287`/`250`): `olympus` + version + local time; footer highlights current page and rider name.
 - **Main** (`src/render.rs:308`): ASCII `OLYMPUS` slant logo + 6-item nav (`New Ride` → Control, Workouts → Database, Settings, Stats, Quit with confirm `src/render.rs:121`).
-- **Control** (`src/render.rs:392`): Big Power/HR (`tui-big-text`), Braille history for power/HR/cadence/speed `tail_points()`, zone gauges `726`, Ride Stats `TIME/DIST/ELEV/GRAD/CAL/TSS/IF` (`ELEV`/`GRAD` read `-- (ERG mode)` when a trainer reports none), Intervals `w.step_at(elapsed)`, System `BT [STATE]` color (`Connected` green / `Error` red). With no ride in progress it swaps the live dashboard for an idle `READY — NO RIDE IN PROGRESS` panel (`render_control_idle`). Overlays: `Paused` banner (`Space` resume, `Q` finish), end-of-ride Summary (`Save/Discard/Resume`), and a global keybind reference on `?`.
+- **Control** (`control_draw`): Big Power/HR (`tui-big-text`), Braille history for power/HR/cadence/speed `tail_points()`, zone gauges, Ride Stats `TIME/DIST/ELEV/GRAD/CAL/TSS/IF` (`ELEV`/`GRAD` read `-- (ERG mode)` when a trainer reports none), Intervals `w.step_at(elapsed)`, System `BT [STATE]` color (`Connected` green / `Error` red), `STRAP` row shows the paired HR strap when live. With no ride in progress it swaps the live dashboard for an idle `READY — NO RIDE IN PROGRESS` panel (`render_control_idle`). Overlays: `Paused` banner, end-of-ride Summary, and a global keybind reference on `?`.
 - **Database** (`src/render.rs:1008`): Two-tab `Workouts` (`data/workouts/*.zwo|*.erg` `src/data.rs`) and `Sessions` (`fit_sessions` `src/data.rs`).
-- **Settings** (`src/render.rs:1160`): `Bluetooth` (live `state.label()`) / `System` / `User` profile editor — placeholder `General`/`Appearance` panels were dropped in Phase 8.
+- **Settings** (`src/render.rs`): `Bluetooth` (live `state.label()`, trainer + optional HR-strap rows) / `System` / `User` profile editor — placeholder `General`/`Appearance` panels were dropped in Phase 8.
 - **Stats** (`src/render.rs:1399`): weekly TSS bars (last 8 weeks), power-curve PR `1m/5m/20m`, volume (km / hours / km·h) — computed once from the `samples` table with the rider's FTP.
 
 ## Build & Run (v1.0.0-rc1)
@@ -136,16 +136,16 @@ you ride — you simply get honest `--` stats instead of invented telemetry.
 
 ### Shipped (v1.0.0-rc1)
 
-- [x] End-to-end ride: BLE acquisition (power / cadence via `CrankTracker` `src/ble.rs:40` / HR / speed)
-- [x] ERG target power pushed to trainer (FTMS `0x2AD9` `src/ble.rs:464`, with `Idle/Scanning/Connecting/Connected/Error` states `src/ble.rs`)
-- [x] `.erg` and `.zwo` workout parsing + interval scheduling (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP` `src/erg.rs:113`)
-- [x] Metrics: rolling `5/10/20-min` (+`3m/1m/30s/10s/3s`) power, NP/IF/TSS/kJ/kcal, distance (`src/math.rs:92`, `src/app.rs:634`)
-- [x] Rider profile (JSON) load/save with clamped editor (`src/data.rs:119`, `src/app.rs:347`)
-- [x] FIT activity writer — Garmin-valid (`src/fit_writer.rs:191`, `data/.fit/ride_*.fit`)
-- [x] SQLite session + per-second `samples` persistence (`src/data.rs:137`, `save_ride()` `200`)
-- [x] Database browsing (Workouts + Sessions) (`src/render.rs:1008`, `src/app.rs:232`)
-- [x] Profile & Bluetooth settings (`src/render.rs:1160`)
-- [x] Ride lifecycle: `Running/Paused/Summary` (`src/app.rs:170`) — pause (`Space`), summary (`Q` → `Save/Discard/Resume` `src/render.rs:162`), `is_recording()` gate `500`, `Paused` banner `978`
+- [x] End-to-end ride: BLE acquisition (power / cadence via `CrankTracker`, HR / speed) — dual peripheral: FTMS trainer + optional HR strap (`0x2A37`) with strap-priority HR merge (`find_sensors`, `parse_notification`)
+- [x] ERG target power pushed to trainer (FTMS `0x2AD9` `set_target_power`, with `Idle/Scanning/Connecting/Connected/Error` states)
+- [x] `.erg` and `.zwo` workout parsing + interval scheduling (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP`)
+- [x] Metrics: rolling `5/10/20-min` (+`3m/1m/30s/10s/3s`) power, NP/IF/TSS/kJ/kcal, distance (`src/math.rs`, `LiveData`)
+- [x] Rider profile (JSON) load/save with clamped editor
+- [x] FIT activity writer — Garmin-valid (`src/fit_writer.rs`, `data/.fit/ride_*.fit`)
+- [x] SQLite session + per-second `samples` persistence (`src/data.rs`, `save_ride()`)
+- [x] Database browsing (Workouts + Sessions)
+- [x] Profile & Bluetooth settings (`src/render.rs`)
+- [x] Ride lifecycle: `Running/Paused/Summary` — pause (`Space`), summary (`Q` → `Save/Discard/Resume`), `is_recording()` gate, `Paused` banner
 
 ### The 1.0 roadmap is shipped — Phases 0–6 all landed (see `ROADMAP.md` §1)
 
@@ -155,7 +155,7 @@ Content & FTP (`7f71b0b`), manual Export (`67f5165`), Polish + `1.0.0-rc1`
 
 ### Next — the complete training app (`ROADMAP.md` §2, Phases 7–13)
 
-- [ ] **Locked slice · Phases 7–10:** docs as source of truth, pause-TSS/ELEV trust fixes, HR-strap merge, FTP ramp test + first-ride onboarding — then bump `1.0.0`, tag `v1.0.0`
+- [ ] **Locked slice · Phases 7–10:** docs as source of truth ✅, pause-TSS/ELEV trust fixes ✅, HR-strap merge ✅ — **Phase 10 (FTP ramp test + first-ride onboarding) next**, then bump `1.0.0`, tag `v1.0.0`
 - [ ] **Phase 11 — Distribution:** release binaries + per-OS Bluetooth setup notes
 - [ ] **Phase 12 — Strava auto-upload:** OAuth (PKCE), queued retry, token gitignored
 - [ ] **Phase 13 — Training depth:** workout creator, plans/fitness-freshness, adherence, virtual shifting
