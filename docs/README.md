@@ -9,18 +9,18 @@ Olympus is a minimalist, high-performance **TUI** for indoor cycling. The applic
 The application utilizes a decoupled, multi-threaded design powered by an asynchronous runtime to ensure user interface rendering never blocks real-time hardware data collection.
 
 ```markdown
-┌────────────────────────────────────────────────────────┐
-│                       OLYMPUS                          │
-├────────────────┬────────────────────┬──────────────────┤
-│    UI LOOP     │     ASYNC RUN      │     IPC LAYER    │
-│   (Ratatui)    │  (Tokio Runtime)   │     (Maturin)    │
-└───────┬────────┴─────────┬──────────┴─────────┬────────┘
-        │                  │                    │
-        ▼                  ▼                    ▼
-┌────────────────┐ ┌────────────────┐ ┌──────────────────┐
-│ STORAGE ENGINE │ │  HARDWARE I/O  │ │  AI VOICE HUB    │
-│  (SQLite/FIT)  │ │(Btleplug/ANT+) │ │    (ICARUS)      │
-└────────────────┘ └────────────────┘ └──────────────────┘
+┌─────────────────────────────────────┐
+│              OLYMPUS                │
+├─────────────────┬───────────────────┤
+│    UI LOOP      │     ASYNC RUN     │
+│   (Ratatui)     │  (Tokio Runtime)  │
+└───────┬─────────┴────────┬──────────┘
+        │                  │
+        ▼                  ▼
+┌────────────────┐ ┌──────────────────┐
+│ STORAGE ENGINE │ │   HARDWARE I/O   │
+│  (SQLite/FIT)  │ │ (Btleplug/ANT+)  │
+└────────────────┘ └──────────────────┘
 ```
 
 ## The Tech Stack
@@ -43,9 +43,6 @@ The application utilizes a decoupled, multi-threaded design powered by an asynch
 - **Parsers** (`src/erg.rs:113`, `src/erg.rs:190`): `.erg` key-value (`TARGET_POWER`/`DURATION`/… ) and `.zwo` XML (`Warmup`/`SteadyState`/`IntervalsT`/`Cooldown`/`Ramp`, `≤10→×FTP` scaling) via `xml` crate.
 - **Rusqlite** (`src/data.rs:137`): Embedded SQLite at `data/olympus.db` with `fit_sessions` summary + per-second `samples(session_id, t, power, cadence, hr, speed)` for retro analytics (`save_ride()` `src/data.rs:200`).
 - **Serde JSON**: Rider profile at `data/user/profile.json` (`username/weight/height/ftp/max_hr`) with clamped editor `src/app.rs:347`.
-
-### Inter-Process Communication & Voice Assistant ([ICARUS](https://github.com/draconis-engineering/icarus))
-- **Maturin** + **PyO3**: Bridges the Rust binary to the Python ecosystem. PyO3 uses macros to translate low-level telemetry structures into native Python data classes, allowing ICARUS to parse live stats and inject direct operational overrides (e.g., lowering trainer target wattage by voice command).
 
 ## Target UI Blueprint
 
