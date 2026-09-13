@@ -156,7 +156,7 @@ Content & FTP (`7f71b0b`), manual Export (`67f5165`), Polish + `1.0.0-rc1`
 ### Next — the complete training app (`ROADMAP.md` §2, Phases 7–13)
 
 - [ ] **Locked slice · Phases 7–10:** docs as source of truth ✅, pause-TSS/ELEV trust fixes ✅, HR-strap merge ✅ — **Phase 10 (FTP ramp test + first-ride onboarding) next**, then bump `1.0.0`, tag `v1.0.0`
-- [ ] **Phase 11 — Distribution:** release binaries + per-OS Bluetooth setup notes
+- [ ] **Phase 11 — Distribution & installation:** release binaries, `setup.sh`/`setup.ps1` install wizard (OS/arch detection, checksum verify), per-OS Bluetooth notes + Downloads page
 - [ ] **Phase 12 — Strava auto-upload:** OAuth (PKCE), queued retry, token gitignored
 - [ ] **Phase 13 — Training depth:** workout creator, plans/fitness-freshness, adherence, virtual shifting
 

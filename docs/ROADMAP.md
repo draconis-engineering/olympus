@@ -67,10 +67,12 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trai
 - [ ] Onboarding: with no session history + no trainer, Main suggests the first ride (`ftp_test_20min` or the ramp) on top of the existing `READY — NO RIDE IN PROGRESS` idle panel.
 - Verify: ramp-parse test (like `shipped_workouts_parse_and_have_totals`), FTP-detection test, onboarding render test.
 
-### Phase 11 — Distribution (medium)
-- [ ] Release script: `cargo build --release` → zip of binary + `data/workouts` + README (optional `.deb`); `cargo install --path .` path documented.
-- [ ] Per-OS Bluetooth setup notes — Windows/macOS (grant Bluetooth permission; no `bluetoothd -E` tweak) alongside the existing Linux guide.
-- Verify: release script runs; `cargo install` smoke test; docs accurate.
+### Phase 11 — Distribution & installation (medium–large)
+- [ ] Release script: `cargo build --release` → per-OS artifacts (Windows `.zip` + optional `.msi`, macOS/`.deb`; `cargo install --path .` path documented).
+- [ ] **Setup wizard / install scripts** for a future Downloads page: `setup.sh` (Linux/macOS) + `setup.ps1` (Windows) that detect the OS/arch, fetch the matching release artifact, install the binary, create `data/` dirs, write a first-run `profile.json`, and offer the platform packaging hash / signature check.
+- [ ] Per-OS Bluetooth setup notes — Windows/macOS (grant Bluetooth permission; no `bluetoothd -E` tweak) alongside the existing Linux guide; the wizard prints the right one for the detected OS.
+- [ ] Downloads page (once the website is ready) links the platform artifacts + wizard, with a pinned release hash so the scripts are auditable.
+- Verify: release script runs; setup wizard heads for install on an untouched machine (VM smoke test); `cargo install` smoke test; docs accurate.
 
 ### Phase 12 — Auto-upload to Strava (large)
 - [ ] `reqwest` + `oauth2` (PKCE); token + refresh persisted at `data/user/strava.json`, **gitignored, never committed** (mirrors `profile.json` location).
