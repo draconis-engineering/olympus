@@ -46,6 +46,10 @@ pub struct Workout {
     pub steps: Vec<WorkoutStep>,
     /// Total duration in seconds (sum of all steps).
     pub total_seconds: u32,
+    /// True when this workout is a ramp FTP test (a Ramp that climbs a fixed
+    /// watts-per-minute into a 1-minute staircase). The summary prompts the
+    /// ramp formula (0.75 × best 60-s power) for these instead of best20×0.95.
+    pub is_ramp_test: bool,
 }
 
 /// One scheduled step with absolute (start, end) window and a target.
@@ -94,6 +98,7 @@ impl Workout {
             name: None,
             total_seconds: t,
             steps,
+            is_ramp_test: false,
         }
     }
 
@@ -195,6 +200,7 @@ pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
     let mut targets: Vec<ErgTarget> = Vec::new();
     let mut name: Option<String> = None;
     let mut in_name = false;
+    let mut ramp_test_seen = false;
 
     for event in parser {
         use xml::reader::XmlEvent;
@@ -266,9 +272,8 @@ pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
                     "Ramp" => {
                         let duration = get("Duration").unwrap_or(0.0) as u32;
                         let ftp_val = get("Ftp") as Option<f32>;
-                        // Ramp power is typically given as a fraction (e.g.
-                        // <Ramp Duration="120" Ftp="1.0"/>). Treat `Ftp` as a
-                        // fraction of the rider's FTP.
+                        // Legacy form: <Ramp Duration="..." Ftp="1.0"/> — one
+                        // fixed target at a fraction of the rider's FTP.
                         if let Some(fraction) = ftp_val {
                             targets.push(ErgTarget {
                                 target_power: resolve_power(Some(fraction), ftp).unwrap_or(0),
@@ -276,6 +281,43 @@ pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
                                 rest_power: 0,
                                 rest_duration: 0,
                             });
+                        } else if let Some(start_w) =
+                            resolve_power(get("PowerLow").or(get("Power")), ftp)
+                        {
+                            // Ramp-FTP form: <Ramp Duration="1500" PowerLow="100"
+                            // RampRate="20"/> climbs `RampRate` watts every minute
+                            // from `PowerLow` (absolute watts). Expanded into one
+                            // 1-minute step per ramp level; the whole workout is
+                            // tagged `is_ramp_test` so the summary uses the
+                            // 0.75 × best-60-s formula.
+                            let minutes = duration / 60;
+                            let remainder = duration % 60;
+                            let rate_from_attr = get("RampRate").unwrap_or(20.0);
+                            let rate_w = if get("RampRate").is_some() {
+                                rate_from_attr
+                            } else if minutes > 0 {
+                                get("PowerHigh")
+                                    .and_then(|v| resolve_power(Some(v), ftp))
+                                    .map(|high_w| {
+                                        ((high_w - start_w) as f32 / minutes as f32).max(1.0)
+                                    })
+                                    .unwrap_or(20.0)
+                            } else {
+                                rate_from_attr
+                            };
+                            let steps = minutes + u32::from(remainder > 0);
+                            for step in 0..steps {
+                                let step_duration =
+                                    if step == steps - 1 && remainder > 0 { remainder } else { 60 };
+                                targets.push(ErgTarget {
+                                    target_power: (start_w as f64 + rate_w as f64 * step as f64)
+                                        .round() as u16,
+                                    duration_seconds: step_duration as u16,
+                                    rest_power: 0,
+                                    rest_duration: 0,
+                                });
+                            }
+                            ramp_test_seen = true;
                         }
                     }
                     // FreeRide / rest sections produce no ERG target.
@@ -302,6 +344,7 @@ pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
 
     let mut workout = Workout::from_targets(&targets);
     workout.name = name.filter(|n| !n.is_empty());
+    workout.is_ramp_test = ramp_test_seen;
 
     Ok(workout)
 }
@@ -404,11 +447,12 @@ mod tests {
 
     #[test]
     fn shipped_workouts_parse_and_have_totals() {
-        let workouts: [(&str, u32); 4] = [
+        let workouts: [(&str, u32); 5] = [
             ("ftp_test_20min", 2100),
             ("sweet_spot", 3300),
             ("vo2max_30_30", 1560),
             ("recovery", 2400),
+            ("ramp_test", 2400),
         ];
         for (stem, expected_total) in workouts {
             let path = format!(
@@ -420,5 +464,80 @@ mod tests {
             assert!(!w.steps.is_empty());
             assert_eq!(w.total_seconds, expected_total, "{stem} total mismatch");
         }
+    }
+
+    #[test]
+    fn ramp_rate_expands_to_ascending_minute_steps() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ramp.zwo");
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0"?>
+<workout_file>
+  <workout>
+    <Ramp Duration="180" PowerLow="100" RampRate="20"/>
+  </workout>
+</workout_file>"#,
+        )
+        .unwrap();
+
+        let w = parse_zwo_workout(&path, 250).unwrap();
+        assert!(w.is_ramp_test, "rate ramp must tag the workout as a ramp test");
+        // 3 one-minute steps: 100 W, 120 W, 140 W.
+        let powers: Vec<u16> = w.steps.iter().map(|s| s.target_power).collect();
+        assert_eq!(powers, [100, 120, 140]);
+        assert_eq!(w.total_seconds, 180);
+        for (i, s) in w.steps.iter().enumerate() {
+            assert_eq!(s.start_secs, i as u32 * 60);
+            assert_eq!(s.end_secs, s.start_secs + 60);
+        }
+    }
+
+    #[test]
+    fn ramp_high_end_derives_rate_and_partial_minute_keeps_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ramp.zwo");
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0"?>
+<workout_file>
+  <workout>
+    <Ramp Duration="150" PowerLow="100" PowerHigh="200"/>
+  </workout>
+</workout_file>"#,
+        )
+        .unwrap();
+
+        let w = parse_zwo_workout(&path, 200).unwrap();
+        // 100 W over 150 s climbing to 200 W = +50 W/min → minutes 0 and 1 at
+        // full length, a 30-s tail riding the 200 W level.
+        assert_eq!(w.steps.len(), 3);
+        assert_eq!(w.steps[0].target_power, 100);
+        assert_eq!(w.steps[0].end_secs - w.steps[0].start_secs, 60);
+        assert_eq!(w.steps[2].target_power, 200);
+        assert_eq!(w.steps[2].end_secs - w.steps[2].start_secs, 30);
+        assert_eq!(w.total_seconds, 150);
+    }
+
+    #[test]
+    fn ramp_ftp_attr_stays_single_target_and_not_a_test() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ramp.zwo");
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0"?>
+<workout_file>
+  <workout>
+    <Ramp Duration="120" Ftp="1.0"/>
+  </workout>
+</workout_file>"#,
+        )
+        .unwrap();
+
+        let w = parse_zwo_workout(&path, 300).unwrap();
+        assert!(!w.is_ramp_test);
+        assert_eq!(w.steps.len(), 1);
+        assert_eq!(w.steps[0].target_power, 300);
+        assert_eq!(w.steps[0].end_secs - w.steps[0].start_secs, 120);
     }
 }

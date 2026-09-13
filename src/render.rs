@@ -269,6 +269,17 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
 
     // FTP suggestion prompt (rides on top of the summary dialog).
     if let Some(suggested) = app.confirm_ftp {
+        let estimate = app.ftp_estimate();
+        let (window_label, best, multiplier) = match estimate {
+            Some(e) if e.window_seconds == 60 => ("best 60-s power", e.best_power, e.multiplier),
+            Some(e) => ("best 20-min power", e.best_power, e.multiplier),
+            None => ("best power", 0, 0.0),
+        };
+        let coach = if estimate.is_some_and(|e| e.window_seconds == 60) {
+            "Hold close to your max through the final ramp minutes — FTP = 75% of your best minute."
+        } else {
+            "Start the 20-min FTP test at current FTP; the trainer ERG will hold it."
+        };
         let popup = centered_rect(52, 30, area);
         frame.render_widget(Clear, popup);
         let ftp_lines = vec![
@@ -283,9 +294,8 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
             Line::from(""),
             Line::from(Span::styled(
                 format!(
-                    "Best 20-min power ≈ {} W  →  {} W (× 0.95)",
-                    best20_for(app),
-                    suggested
+                    "{window_label} ≈ {} W  →  {} W (× {multiplier:.2})",
+                    best, suggested
                 ),
                 Style::default().fg(Color::White),
             ))
@@ -296,11 +306,8 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
             ))
             .alignment(Alignment::Center),
             Line::from(""),
-            Line::from(Span::styled(
-                "Start the 20-min FTP test at current FTP; the trainer ERG will hold it.",
-                Style::default().fg(Color::DarkGray),
-            ))
-            .alignment(Alignment::Center),
+            Line::from(Span::styled(coach, Style::default().fg(Color::DarkGray)))
+                .alignment(Alignment::Center),
             Line::from(""),
             Line::from(Span::styled(
                 format!(
@@ -325,16 +332,6 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
             popup,
         );
     }
-}
-
-/// Best 20-min rolling power over the just-finished ride, for the FTP prompt.
-fn best20_for(app: &App) -> u16 {
-    let powers: Vec<u16> = app
-        .power_history()
-        .iter()
-        .map(|&p| p.min(u16::MAX as u64) as u16)
-        .collect();
-    crate::math::best_rolling_mean(&powers, 1200)
 }
 
 /// Footer rendering function
@@ -471,6 +468,20 @@ fn main_draw(frame: &mut Frame, area: Rect, app: &App) {
         MainSelection::Settings => menu_text[3].spans[0].style = selected_style,
         MainSelection::Stats => menu_text[4].spans[0].style = selected_style,
         MainSelection::Quit => menu_text[5].spans[0].style = selected_style,
+    }
+
+    // New-rider onboarding: no session history and no trainer yet → point the
+    // rider at the Ramp Test so their first ride also produces a starting FTP.
+    if !app.has_ride_history && !matches!(app.ble, BleUiState::Connected) {
+        menu_text.push(Line::from(""));
+        menu_text.push(Line::from(Span::styled(
+            "NEW RIDER?  Calibrate your first FTP with the Ramp Test:",
+            gray,
+        )));
+        menu_text.push(Line::from(Span::styled(
+            "Database → Workouts → Ramp Test",
+            cyan,
+        )));
     }
 
     frame.render_widget(

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<workout_file>
+  <name><en_US>Ramp Test</en_US></name>
+  <description><en_US>Warmup 10m + 25m ramp (100 W, +20 W/min) + Cooldown. Suggested FTP = 75% of your best 60-s power in the final ramp minutes.</en_US></description>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.35" PowerHigh="0.40"/>
+    <Ramp Duration="1500" PowerLow="100" RampRate="20"/>
+    <Cooldown Duration="300" PowerLow="0.30" PowerHigh="0.35"/>
+  </workout>
+</workout_file>

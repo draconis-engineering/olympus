@@ -77,8 +77,14 @@ fn handle_cli_args() -> bool {
 
 /// Persist a finished ride to a FIT file and the SQLite history, or discard it.
 /// Called from the main loop once the end-of-ride dialog picks an option.
-fn finish_ride(app: &App, fit: &mut FitWriter, samples: &mut Vec<data::Sample>, save: bool) {
+fn finish_ride(
+    app: &mut App,
+    fit: &mut FitWriter,
+    samples: &mut Vec<data::Sample>,
+    save: bool,
+) {
     if save && !fit.is_empty() {
+        app.has_ride_history = true;
         std::fs::create_dir_all("data/.fit").ok();
         let stamp = Utc::now().format("%Y%m%d_%H%M%S");
         let fit_path = std::path::Path::new("data/.fit").join(format!("ride_{stamp}.fit"));
@@ -148,6 +154,14 @@ async fn main() -> io::Result<()> {
 
     let mut app = App::new(livedata, userdata);
     app.set_workout(resolve_workout(profile.ftp));
+
+    // Arriving with an existing session history turns off the new-rider
+    // onboarding hint on Main (it lives for a truly fresh install).
+    if let Ok(conn) = data::init_db(std::path::Path::new("data/olympus.db")) {
+        app.has_ride_history = data::list_sessions(&conn, 1)
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+    }
 
     let fps = Duration::from_secs_f64(1.0 / 60.0);
 
@@ -272,7 +286,7 @@ async fn main() -> io::Result<()> {
         // When the end-of-ride dialog picks Save or Discard, persist/clear the
         // recording here (main owns the FIT writer and the sample buffer).
         if let Some(save) = app.pending_save.take() {
-            finish_ride(&app, &mut fit, &mut samples, save);
+            finish_ride(&mut app, &mut fit, &mut samples, save);
             // The session history changed; force the Database tab to rescan.
             app.database.loaded = false;
             // Stats aggregates changed too; recompute on next visit.

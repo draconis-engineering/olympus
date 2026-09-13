@@ -446,11 +446,37 @@ pub struct App {
     /// Stats screen aggregates.
     pub stats: StatsState,
     /// FTP update prompt from the ride summary: `Some(suggested_ftp)` when the
-    /// ride's best 20-min power (× 0.95) clears the current FTP by a margin.
+    /// ride's estimate (best 60-s × 0.75 on a ramp test, best 20-min × 0.95
+    /// otherwise) clears the current FTP by a margin.
     pub confirm_ftp: Option<u16>,
     /// Whether the `?` keybind reference overlay is showing.
     pub help_open: bool,
+    /// Whether the rider has saved at least one ride (or arrived with an
+    /// existing session history). Gates the new-rider onboarding hint on Main.
+    pub has_ride_history: bool,
 }
+
+/// Deterministic FTP estimate for the end-of-ride summary prompt. The window
+/// depends on the workout: a ramp test uses the best 60-s power × 0.75, every
+/// other ride the best 20-min power × 0.95.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FtpEstimate {
+    /// Width of the rolling mean window in seconds (60 for ramp tests,
+    /// 1200 otherwise).
+    pub window_seconds: u32,
+    /// Best mean power inside that window over the ride.
+    pub best_power: u16,
+    /// Multiplier applied to `best_power` to arrive at `suggested`.
+    pub multiplier: f64,
+}
+
+impl FtpEstimate {
+    /// The rounded, un-gated FTP suggestion.
+    pub fn suggested(&self) -> u16 {
+        (f64::from(self.best_power) * self.multiplier).round() as u16
+    }
+}
+
 impl App {
     pub fn new(livedata: LiveData, userdata: UserData) -> Self {
         Self {
@@ -478,6 +504,7 @@ impl App {
             stats: StatsState::default(),
             confirm_ftp: None,
             help_open: false,
+            has_ride_history: false,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -508,7 +535,7 @@ impl App {
 
     /// The Olympus release version string.
     pub fn version_static() -> &'static str {
-        "1.0.0-rc1"
+        "1.0.0"
     }
     pub fn user(&self) -> &str {
         &self.userdata.profile.username
@@ -594,21 +621,46 @@ impl App {
         self.confirm_ftp = self.ftp_suggestion();
     }
 
-    /// Deterministic "AI FTP detection": the best 20-min rolling mean of the
-    /// ride (`best20`) × 0.95 is a proposed FTP. Only suggest when it beats the
-    /// rider's current FTP by a 5 W margin so the prompt stays out of the way.
-    pub fn ftp_suggestion(&self) -> Option<u16> {
+    /// Deterministic FTP estimate: picks the best window and multiplier based on
+    /// the loaded workout (ramp test vs. normal).
+    pub fn ftp_estimate(&self) -> Option<FtpEstimate> {
         let powers: Vec<u16> = self
             .power_history
             .iter()
             .map(|&p| p.min(u16::MAX as u64) as u16)
             .collect();
-        let best20 = crate::math::best_rolling_mean(&powers, 1200);
-        if best20 == 0 {
-            return None;
+        let is_ramp = self.workout.as_ref().is_some_and(|w| w.is_ramp_test);
+        if is_ramp {
+            let best = crate::math::best_rolling_mean(&powers, 60);
+            if best == 0 {
+                return None;
+            }
+            Some(FtpEstimate {
+                window_seconds: 60,
+                best_power: best,
+                multiplier: 0.75,
+            })
+        } else {
+            let best = crate::math::best_rolling_mean(&powers, 1200);
+            if best == 0 {
+                return None;
+            }
+            Some(FtpEstimate {
+                window_seconds: 1200,
+                best_power: best,
+                multiplier: 0.95,
+            })
         }
-        let suggested = (f64::from(best20) * 0.95).round() as u16;
-        (suggested > self.userdata.ftp() + 5).then_some(suggested)
+    }
+
+    /// Deterministic "AI FTP detection": calls `ftp_estimate()` and gates the
+    /// suggestion so the prompt only fires when it meaningfully beats the
+    /// rider's current FTP by 5 W.
+    pub fn ftp_suggestion(&self) -> Option<u16> {
+        self.ftp_estimate().and_then(|e| {
+            let suggested = e.suggested();
+            (suggested > self.userdata.ftp() + 5).then_some(suggested)
+        })
     }
 
     /// Adopt the FTP the summary dialog suggested, persisting to the profile.
@@ -1744,6 +1796,89 @@ mod tests {
         // Full history but no improvement worth prompting about.
         app.power_history = vec![200u64; 1200];
         assert_eq!(app.ftp_suggestion(), None);
+    }
+
+    #[test]
+    fn ramp_test_suggestion_uses_best60_times_075() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.userdata.profile.ftp = 200;
+        let mut ramp = tiny_workout();
+        ramp.is_ramp_test = true;
+        app.set_workout(Some(ramp));
+
+        // Ramp ride: easy warmup, then a final minute peaking at 320 W.
+        app.power_history = vec![150u64; 300];
+        app.power_history.extend(vec![320u64; 60]);
+        app.power_history.extend(vec![320u64; 20]);
+
+        // 320 × 0.75 = 240, clears 200 + 5 → prompt fires.
+        assert_eq!(app.ftp_estimate(), Some(FtpEstimate {
+            window_seconds: 60,
+            best_power: 320,
+            multiplier: 0.75,
+        }));
+        assert_eq!(app.ftp_suggestion(), Some(240));
+    }
+
+    #[test]
+    fn ramp_test_suggestion_absent_without_a_full_minute() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.userdata.profile.ftp = 200;
+        let mut ramp = tiny_workout();
+        ramp.is_ramp_test = true;
+        app.set_workout(Some(ramp));
+
+        // Under a minute of samples never fills a 60-s window.
+        app.power_history = vec![320u64; 45];
+        assert_eq!(app.ftp_estimate(), None);
+        assert_eq!(app.ftp_suggestion(), None);
+    }
+
+    #[test]
+    fn non_ramp_workout_keeps_best20_formula() {
+        let mut app = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        app.userdata.profile.ftp = 200;
+        app.set_workout(Some(tiny_workout())); // not a ramp test
+
+        app.power_history = vec![240u64; 1200];
+        assert_eq!(app.ftp_estimate(), Some(FtpEstimate {
+            window_seconds: 1200,
+            best_power: 240,
+            multiplier: 0.95,
+        }));
+        assert_eq!(app.ftp_suggestion(), Some(228));
+    }
+
+    #[test]
+    fn onboarding_hint_guides_new_rider_until_history_exists() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let buffer_text = |app: &App| -> String {
+            let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+            terminal
+                .draw(|frame| crate::render::draw(frame, app))
+                .expect("main screen should render");
+            terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
+        };
+
+        // Fresh install: no history, no trainer → the hint points at the ramp.
+        let fresh = App::new(LiveData::new(), UserData::new(UserProfile::default()));
+        let text = buffer_text(&fresh);
+        assert!(text.contains("NEW RIDER"), "onboarding hint missing");
+        assert!(text.contains("Ramp Test"), "onboarding hint missing");
+
+        // After the first saved ride the hint is gone.
+        let mut ridden = fresh;
+        ridden.has_ride_history = true;
+        let text = buffer_text(&ridden);
+        assert!(!text.contains("NEW RIDER"), "hint should vanish once history exists");
     }
 
     #[test]

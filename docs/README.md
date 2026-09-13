@@ -55,7 +55,7 @@ The terminal view runs at 60 fps (1 Hz ride-engine tick) using Unicode Braille f
 - **Settings** (`src/render.rs`): `Bluetooth` (live `state.label()`, trainer + optional HR-strap rows) / `System` / `User` profile editor — placeholder `General`/`Appearance` panels were dropped in Phase 8.
 - **Stats** (`src/render.rs:1399`): weekly TSS bars (last 8 weeks), power-curve PR `1m/5m/20m`, volume (km / hours / km·h) — computed once from the `samples` table with the rider's FTP.
 
-## Build & Run (v1.0.0-rc1)
+## Build & Run (v1.0.0)
 
 ```
 cargo run --release
@@ -134,11 +134,11 @@ you ride — you simply get honest `--` stats instead of invented telemetry.
 
 ## Feature Status
 
-### Shipped (v1.0.0-rc1)
+### Shipped (v1.0.0)
 
 - [x] End-to-end ride: BLE acquisition (power / cadence via `CrankTracker`, HR / speed) — dual peripheral: FTMS trainer + optional HR strap (`0x2A37`) with strap-priority HR merge (`find_sensors`, `parse_notification`)
 - [x] ERG target power pushed to trainer (FTMS `0x2AD9` `set_target_power`, with `Idle/Scanning/Connecting/Connected/Error` states)
-- [x] `.erg` and `.zwo` workout parsing + interval scheduling (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP`)
+- [x] `.erg` and `.zwo` workout parsing + interval scheduling (`Warmup/SteadyState/IntervalsT/Cooldown/Ramp`, `≤10→×FTP` scaling; multi-minute `Ramp` expands into a 1-minute ascending staircase for the ramp FTP test)
 - [x] Metrics: rolling `5/10/20-min` (+`3m/1m/30s/10s/3s`) power, NP/IF/TSS/kJ/kcal, distance (`src/math.rs`, `LiveData`)
 - [x] Rider profile (JSON) load/save with clamped editor
 - [x] FIT activity writer — Garmin-valid (`src/fit_writer.rs`, `data/.fit/ride_*.fit`)
@@ -155,7 +155,7 @@ Content & FTP (`7f71b0b`), manual Export (`67f5165`), Polish + `1.0.0-rc1`
 
 ### Next — the complete training app (`ROADMAP.md` §2, Phases 7–13)
 
-- [ ] **Locked slice · Phases 7–10:** docs as source of truth ✅, pause-TSS/ELEV trust fixes ✅, HR-strap merge ✅ — **Phase 10 (FTP ramp test + first-ride onboarding) next**, then bump `1.0.0`, tag `v1.0.0`
+- [x] **Locked slice · Phases 7–10:** docs as source of truth ✅, pause-TSS/ELEV trust fixes ✅, HR-strap merge ✅, FTP ramp test + first-ride onboarding ✅ (`ramp_test.zwo`, `ftp_estimate()`) — running as `1.0.0`, tag `v1.0.0`
 - [ ] **Phase 11 — Distribution & installation:** release binaries, `setup.sh`/`setup.ps1` install wizard (OS/arch detection, checksum verify), per-OS Bluetooth notes + Downloads page
 - [ ] **Phase 12 — Strava auto-upload:** OAuth (PKCE), queued retry, token gitignored
 - [ ] **Phase 13 — Training depth:** workout creator, plans/fitness-freshness, adherence, virtual shifting

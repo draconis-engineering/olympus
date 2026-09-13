@@ -2,7 +2,7 @@
 
 > **Vision:** *The TrainerRoad for terminals.* A free, offline-first, privacy-minded TUI that drives a Tacx Flux S2 (or any FTMS trainer) with flawless ERG execution and writes a Garmin-valid `.fit` you can drop into Garmin Connect → Strava. No video worlds, no MMO server, no social feed — just perfect workouts.
 
-**Current version:** `1.0.0-rc1` (`App::version_static()` · `src/app.rs`) · dashed toward `1.1.0`
+**Current version:** `1.0.0` (`App::version_static()` · `src/app.rs`) · dashed toward `1.1.0`
 **1.0 MVP promise — met.** Fresh install → pair trainer → pick a workout → ride ERG with live Braille graphs and pause/skip/nudge/hold → finish with a Save/Discard summary → a FIT lands in `data/.fit` that Garmin/Strava accept → the ride shows up in local history + stats. No JSON hand-editing, no restart on a Bluetooth hiccup.
 
 This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy / Tacx Training / TrainerRoad / Zwift. Phases 0–6 shipped on 2026-09-08; the "complete training app" gap work is tracked here as Phases 7–13.
@@ -32,16 +32,16 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 | **5 — Export (manual).** | `67f5165` | Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect`; manual export docs. |
 | **6 — Polish & release.** | `d8f76a1` | `?` keybind help overlay; bump to `1.0.0-rc1` (app + Cargo.toml); tag `v1.0.0-rc1`. |
 
-Tests: **75 passing**, clippy baseline **18 pre-existing warnings** (dropped 2 with the simulated-data removal). Workouts directory: `data/workouts/*.zwo`.
+Tests: **82 passing**, clippy baseline **18 pre-existing warnings** (dropped 2 with the simulated-data removal). Workouts directory: `data/workouts/*.zwo`.
 
 ### What a user can do today
-Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (an HR strap like a Polar H10 pairs automatically as a second device — no trainer attached is fine, the idle Control panel shows `READY — NO RIDE IN PROGRESS` instead of fabricated numbers), pick one of 4 workouts or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
+Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (an HR strap like a Polar H10 pairs automatically as a second device — no trainer attached is fine, the idle Control panel shows `READY — NO RIDE IN PROGRESS` instead of fabricated numbers), pick one of 5 workouts (including the Ramp Test — a fresh install points new riders straight at it) or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
 
 ---
 
 ## 2. Build Plan — Phases 7–13 (the complete training app)
 
-> **Locked slice: Phases 7–10** (source-of-truth → trust → HR → FTP ramp). Version gate: bump `1.0.0-rc1` → `1.0.0`, tag `v1.0.0` when Phase 10 lands. Phases 11–13 follow, then `1.1.0`.
+> **Locked slice: Phases 7–10 shipped** (source-of-truth → trust → HR → FTP ramp). Phase 10 landed the version gate: **`1.0.0` + tag `v1.0.0`**. Phases 11–13 follow, then `1.1.0`.
 
 ### Phase 7 — Docs = source of truth (this commit, small)
 - [x] Grep-verify every "shipped" claim before writing (the old checkboxes drifted — Phases 0–2 were done but still `[ ]`).
@@ -62,10 +62,10 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trai
 - Risk: multi-peripheral flake on BlueZ → reuse Phase 0–2 reconnect/Scan; keep single-trainer ERG until stable.
 
 ### Phase 10 — FTP ramp test + first-ride onboarding (small–medium)
-- [ ] Ship `data/workouts/ramp_test.zwo` (**Warmup → 20 W/min Ramp → Cooldown**) via the existing `Ramp` parser (`src/erg.rs`).
-- [ ] Detection formula: **FTP = 0.75 × best 60-s power** of the final ramp minutes, reusing `best_rolling_mean` and surfacing through the existing `confirm_ftp` summary prompt (Phase 4).
-- [ ] Onboarding: with no session history + no trainer, Main suggests the first ride (`ftp_test_20min` or the ramp) on top of the existing `READY — NO RIDE IN PROGRESS` idle panel.
-- Verify: ramp-parse test (like `shipped_workouts_parse_and_have_totals`), FTP-detection test, onboarding render test.
+- [x] Ship `data/workouts/ramp_test.zwo` (**Warmup 10 m → 25 m Ramp from 100 W at +20 W/min → Cooldown 5 m**) via the existing `Ramp` parser (`src/erg.rs`): a `Ramp` with `PowerLow`+`RampRate` (or `PowerHigh`) expands to a 1-minute ascending staircase and tags the workout `is_ramp_test`.
+- [x] Detection formula: **FTP = 0.75 × best 60-s power**, reusing `best_rolling_mean` (`src/math.rs`) inside `ftp_estimate()` (`src/app.rs`); ramp-test rides switch the summary prompt's window while normal rides keep `best20×0.95` — all through the existing `confirm_ftp` Y/N prompt (Phase 4).
+- [x] Onboarding: with no session history + no trainer, Main shows a `NEW RIDER? … Ramp Test` hint under the menu (`main_draw`, `has_ride_history` seeded from the DB at startup); it clears after the first saved ride.
+- Verify: `ramp_rate_expands_to_ascending_minute_steps`, `ramp_test_suggestion_uses_best60_times_075`, `onboarding_hint_guides_new_rider_until_history_exists`, and `shipped_workouts_parse_and_have_totals` covers `ramp_test`. Version gate: bump to `1.0.0`, tag `v1.0.0`.
 
 ### Phase 11 — Distribution & installation (medium–large)
 - [ ] Release script: `cargo build --release` → per-OS artifacts (Windows `.zip` + optional `.msi`, macOS/`.deb`; `cargo install --path .` path documented).
