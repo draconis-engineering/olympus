@@ -15,11 +15,18 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see http://www.gnu.org/licenses.
 */
-
-// Cross-platform: btleplug abstracts BlueZ (Linux), CoreBluetooth (macOS/iOS),
-// WinRT (Windows 10+) and DroidPlug (Android). We parse the standard GATT
-// profiles for Cycling Power, Heart Rate and the Fitness Machine Service so a
-// Tacx Flux S2 (FE-C over BLE) is driven end-to-end.
+// ----------------------------------------------------------
+/*
+* Cross-platform:
+* btleplug abstracts BlueZ (Linux)
+* CoreBluetooth (macOS/iOS)
+* WinRT (Windows 10+)
+* DroidPlug (Android)
+*
+* We parse the standard GATT profiles for Cycling Power,
+* Heart Rate and the Fitness Machine Service so a
+* Tacx Flux S2 (FE-C over BLE) is driven end-to-end.
+*/
 
 use btleplug::api::{
     Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,

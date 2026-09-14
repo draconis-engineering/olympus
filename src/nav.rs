@@ -18,14 +18,16 @@
 
 use super::app::Screen;
 
-// ---------------------------------------------------------------------------
-// Selection navigation
-//
-// Each selection has a stable, explicitly ordered list of its variants. Moving
-// up/down simply indexes into that list with wrapping arithmetic, so there is
-// no hand-maintained match chain to get out of sync, and navigation is always
-// bounded — it can never panic or fall off either end.
-// ---------------------------------------------------------------------------
+/*
+* ---------------------------------------------------------------------------
+* Selection navigation
+*
+* Each selection has a stable, explicitly ordered list of its variants. Moving
+* up/down simply indexes into that list with wrapping arithmetic, so there is
+* no hand-maintained match chain to get out of sync, and navigation is always
+* bounded — it can never panic or fall off either end.
+* ---------------------------------------------------------------------------
+*/
 
 /// Radius of a closed loop: `count > 0` guarantees wrapping indexes stay in
 /// range. All our menus have at least one entry, so this never underflows.
