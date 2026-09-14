@@ -1,11 +1,11 @@
 # Olympus Roadmap — 1.0 Shipped, dashed toward the Complete Training App
 
-> **Vision:** *The TrainerRoad for terminals.* A free, offline-first, privacy-minded TUI that drives a Tacx Flux S2 (or any FTMS trainer) with flawless ERG execution and writes a Garmin-valid `.fit` you can drop into Garmin Connect → Strava. No video worlds, no MMO server, no social feed — just perfect workouts.
+> **Vision:** *A training app you own.* A free, offline-first, privacy-minded TUI that connects to any modern smart trainer over the standard Bluetooth Fitness Machine Service, executes workouts with perfect ERG resistance, and writes a Garmin-valid `.fit` you can drop into Garmin Connect → Strava. No video worlds, no MMO server, no social feed — just perfect workouts.
 
 **Current version:** `1.0.0` (`App::version_static()` · `src/app.rs`) · dashed toward `1.1.0`
 **1.0 MVP promise — met.** Fresh install → pair trainer → pick a workout → ride ERG with live Braille graphs and pause/skip/nudge/hold → finish with a Save/Discard summary → a FIT lands in `data/.fit` that Garmin/Strava accept → the ride shows up in local history + stats. No JSON hand-editing, no restart on a Bluetooth hiccup.
 
-This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy / Tacx Training / TrainerRoad / Zwift. Phases 0–6 shipped on 2026-09-08; the "complete training app" gap work is tracked here as Phases 7–13.
+This roadmap was cut 2026-09-04 after a competitive pass against the dominant ride apps (Strava / Rouvy / TrainerRoad / Zwift / Garmin's Tacx Training). Phases 0–6 shipped on 2026-09-08; the "complete training app" gap work is tracked here as Phases 7–13.
 
 ---
 
@@ -15,7 +15,7 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 |---|---|---|
 | **Strava** | Social feed, segments, 135 M users | Social graph, clubs, segments hosting. Olympus *exports to* Strava; it doesn't host. |
 | **Rouvy** | 1 300+ real-video AR routes | Video / AR overlay. Terminal Braille cannot compete. |
-| **Tacx Training** | OEM Flux S2 support + Garmin Connect gateway | Being Tacx-locked. Olympus supports any FTMS trainer and stays offline. |
+| **Garmin / Tacx Training** | Deep Garmin-ecosystem integration (Garmin Connect + Tacx trainers) | Locked to the Garmin/Tacx world. Olympus speaks the open FTMS standard to any trainer and stays offline. |
 | **TrainerRoad / Zwift** | Adaptive AI, 3 000 workouts, virtual worlds | Full AI coaching, MMO racing. Olympus ships a deterministic `best20×0.95` FTP heuristic and integrates *out* via FIT. |
 
 **Olympus wins on:** precision ERG (`SetTargetPower` + `ramp_target` FTMS `0x03/0x2AD9`, `src/ble.rs`), accurate NP/IF/TSS/kJ (`src/math.rs`), `rusqlite` + per-second `samples` retro-analytics (`src/data.rs`), headless `tokio` + RPi-in-garage, zero subscription, terminal-native.
@@ -35,7 +35,7 @@ This roadmap was cut 2026-09-04 after a competitive pass against Strava / Rouvy 
 Tests: **82 passing**, clippy baseline **18 pre-existing warnings** (dropped 2 with the simulated-data removal). Workouts directory: `data/workouts/*.zwo`.
 
 ### What a user can do today
-Run `cargo run --release` (optionally `-- path/workout.zwo`), pair any FTMS trainer in Settings → Bluetooth (an HR strap like a Polar H10 pairs automatically as a second device — no trainer attached is fine, the idle Control panel shows `READY — NO RIDE IN PROGRESS` instead of fabricated numbers), pick one of 5 workouts (including the Ramp Test — a fresh install points new riders straight at it) or the FTP test, ride ERG with big-text power/HR, Braille history, zone gauges, live TSS/IF/NP and interval stepping; pause (`Space`), nudge (`+/-`), hold (`e`); finish (`Q`) → Save writes `data/.fit/ride_*.fit` + `data/olympus.db`; browse rides in Database → Sessions with drill-down, and weekly TSS / PRs in Stats.
+Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth smart trainer in **Settings → Bluetooth** (a heart-rate strap pairs automatically as a second device — no trainer attached is fine; the Control panel shows a plain `READY — NO RIDE IN PROGRESS` instead of fabricated numbers). Pick one of 5 bundled workouts — including the **Ramp Test**, which a fresh install points new riders straight at, and the 20-min FTP test. Ride ERG with big power/HR text, Braille history, zone gauges, live TSS/IF/NP and step-by-step intervals; pause (`Space`), nudge (`+/-`), hold (`e`). Finish with `Q` → **Save** writes `data/.fit/ride_*.fit` + a `data/olympus.db` history row. Browse rides in **Database → Sessions** with drill-down graphs, and weekly TSS / power records in **Stats**.
 
 ---
 

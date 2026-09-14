@@ -21,7 +21,7 @@
 * Loads .erg / .zwo workout files, schedules interval targets, and (via the
 * BLE driver) drives the trainer's ERG target power.
 *
-* .erg format (Tacx / TrainerRoad legacy, simple key-value pairs):
+* .erg format (legacy simple key-value pairs, shared with .zwo exporters):
 *   TARGET_POWER: 200     (watts)
 *   DURATION: 300          (seconds)
 *   REST_POWER: 120

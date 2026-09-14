@@ -1585,7 +1585,7 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Span::styled("to re-scan for a trainer", Color::DarkGray),
             ]));
             lines.push(Line::from(Span::styled(
-                "The Tacx Flux S2 connects via FTMS (Fitness Machine Service).",
+                "Any BLE smart trainer pairs over the open Fitness Machine Service; an HR strap can pair as a second device.",
                 Color::DarkGray,
             )));
             Paragraph::new(lines)

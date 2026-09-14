@@ -24,8 +24,9 @@
 * DroidPlug (Android)
 *
 * We parse the standard GATT profiles for Cycling Power,
-* Heart Rate and the Fitness Machine Service so a
-* Tacx Flux S2 (FE-C over BLE) is driven end-to-end.
+* Heart Rate and the Fitness Machine Service (FTMS) so any
+* modern BLE smart trainer is driven end-to-end, with an
+* optional second peripheral for a heart-rate strap.
 */
 
 use btleplug::api::{
@@ -669,7 +670,7 @@ fn ramp_steps(from: u16, to: u16, n: u32) -> Vec<u16> {
         .collect()
 }
 
-/// Command the target gradually so a Flux-style trainer doesn't jolt toward a
+/// Command the target gradually so the trainer doesn't jolt toward a
 /// big wattage jump. On the first-ever command (`from` is `None`) the target is
 /// written directly; afterwards we step over ~2.5 s in 100 ms increments.
 async fn ramp_target(
