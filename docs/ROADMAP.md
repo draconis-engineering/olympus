@@ -5,7 +5,7 @@
 **Current version:** `1.0.0` (`App::version_static()` · `src/app.rs`) · dashed toward `1.1.0`
 **1.0 MVP promise — met.** Fresh install → pair trainer → pick a workout → ride ERG with live Braille graphs and pause/skip/nudge/hold → finish with a Save/Discard summary → a FIT lands in `data/.fit` that Garmin/Strava accept → the ride shows up in local history + stats. No JSON hand-editing, no restart on a Bluetooth hiccup.
 
-This roadmap was cut 2026-09-04 after a competitive pass against the dominant ride apps (Strava / Rouvy / TrainerRoad / Zwift / Garmin's Tacx Training). Phases 0–6 shipped on 2026-09-08; the "complete training app" gap work is tracked here as Phases 7–13.
+This roadmap was cut 2026-09-04 after a competitive pass against the dominant ride apps (Strava / Rouvy / TrainerRoad / Zwift / Garmin's Tacx Training). Phases 0–6 shipped on 2026-09-08; the "complete training app" gap work is tracked here as Phases 7–14.
 
 ---
 
@@ -39,9 +39,9 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 
 ---
 
-## 2. Build Plan — Phases 7–13 (the complete training app)
+## 2. Build Plan — Phases 7–14 (the complete training app)
 
-> **Locked slice: Phases 7–10 shipped** (source-of-truth → trust → HR → FTP ramp). Phase 10 landed the version gate: **`1.0.0` + tag `v1.0.0`**. Phases 11–13 follow, then `1.1.0`.
+> **Locked slice: Phases 7–10 shipped** (source-of-truth → trust → HR → FTP ramp). Phase 10 landed the version gate: **`1.0.0` + tag `v1.0.0`**. Phases 11–14 follow, then `1.1.0`.
 
 ### Phase 7 — Docs = source of truth (this commit, small)
 - [x] Grep-verify every "shipped" claim before writing (the old checkboxes drifted — Phases 0–2 were done but still `[ ]`).
@@ -69,8 +69,8 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 
 ### Phase 11 — Distribution & installation (medium–large)
 - [ ] Release script: `cargo build --release` → per-OS artifacts (Windows `.zip` + optional `.msi`, macOS/`.deb`; `cargo install --path .` path documented).
-- [ ] **Setup wizard / install scripts** for a future Downloads page: `setup.sh` (Linux/macOS) + `setup.ps1` (Windows) that detect the OS/arch, fetch the matching release artifact, install the binary, create `data/` dirs, write a first-run `profile.json`, and offer the platform packaging hash / signature check.
-- [ ] Per-OS Bluetooth setup notes — Windows/macOS (grant Bluetooth permission; no `bluetoothd -E` tweak) alongside the existing Linux guide; the wizard prints the right one for the detected OS.
+- [x] **Setup wizard / install scripts** for a future Downloads page: `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) that detect the OS/arch, fetch the matching release artifact (`olympus-<tag>-<os>-<arch>.tar.gz|.zip` + `.sha256`), verify the SHA-256 when published (`OLYMPUS_REQUIRE_CHECKSUM=1` / `-RequireChecksum` to enforce), install the binary plus a `data`-home launcher, seed `data/workouts` + a first-run `profile.json`, and print the platform Bluetooth note. **Auto-update = docs only: re-running the wizard always installs the latest release.**
+- [x] Per-OS Bluetooth setup notes — Windows/macOS (grant Bluetooth permission; no `bluetoothd -E` tweak) alongside the existing Linux guide; the wizard prints the right one for the detected OS.
 - [ ] Downloads page (once the website is ready) links the platform artifacts + wizard, with a pinned release hash so the scripts are auditable.
 - Verify: release script runs; setup wizard heads for install on an untouched machine (VM smoke test); `cargo install` smoke test; docs accurate.
 
@@ -86,6 +86,11 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - [ ] Interval-adherence score (Rouvy-execution style); power-curve history + season compare.
 - [ ] Virtual shifting / second FTMS field — staged *after* Garmin accepts a shifting-flagged FIT.
 - Each sub-item ships with tests + doc checkbox (Phase 7 rule).
+
+### Phase 14 — In-app update check (small)
+- [ ] On startup, `reqwest`-poll the GitHub latest release (silent, non-blocking); if a newer tag exists, show a notice in the UI ("new release available — re-run the setup wizard to update") rather than self-updating.
+- [ ] Optional: ping the wizard's pinned release hash so the notice can link/stage the artifact; never auto-install over a user's data home.
+- Verify: offline boot stays instant (timeout + cached result); notice appears once per boot, dismissible.
 
 ---
 
@@ -119,4 +124,4 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - 1.0 is shipped; the **locked slice is Phases 7–10**. Anything else targets `1.1` or the backlog beyond.
 - When a Phase lands, update `docs/README.md` Feature Status **in the same commit** and bump the version string at `App::version_static()`.
 
-*Last updated: 2026-09-08 · Owner: @amundgaard · Status: 1.0 shipped · Phases 7–10 locked.*
+*Last updated: 2026-09-14 · Owner: @amundgaard · Status: 1.0 shipped · Phases 7–10 locked · Phase 11 install scripts done*

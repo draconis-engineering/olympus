@@ -143,10 +143,11 @@ Start the app with no sensors paired and Olympus stays honest: the Control panel
 
 Docs as source of truth ✅, trust the numbers ✅, HR-strap merge ✅, FTP ramp test + first-ride onboarding ✅ — running as `1.0.0`, tag `v1.0.0`.
 
-### Next — the complete training app (`ROADMAP.md` §2, Phases 11–13)
+### Next — the complete training app (`ROADMAP.md` §2, Phases 11–14)
 
-- [ ] **Phase 11 — Distribution & installation:** release binaries, `setup.sh` / `setup.ps1` install wizard (OS/arch detection, checksum verify), per-OS Bluetooth notes + a future Downloads page
+- [ ] **Phase 11 — Distribution & installation:** install wizards shipped — `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) — OS/arch detection, SHA-256 verify, data-home seeding, per-OS Bluetooth notes, re-run to update; release script + future Downloads page still open
 - [ ] **Phase 12 — Strava auto-upload:** OAuth (PKCE), queued retry, token gitignored
 - [ ] **Phase 13 — Training depth:** workout creator, plans / fitness-freshness, adherence, virtual shifting
+- [ ] **Phase 14 — In-app update check:** silent latest-release poll on boot → "re-run the setup wizard" notice
 
 > Full phased plan, competitive gap table, and out-of-scope list: [`ROADMAP.md`](ROADMAP.md)
