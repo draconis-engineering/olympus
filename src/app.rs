@@ -1,6 +1,20 @@
-// src/app.rs
-//
-// App.rs is the main application struct and entry point for the TUI.
+/*
+* Core App Runtime for the Olympus TUI
+* Copyright (C) 2026 Simon Stordal Amundgård
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see http://www.gnu.org/licenses.
+*/
 
 use super::data::UserProfile;
 use super::erg::Workout;
@@ -579,7 +593,10 @@ impl App {
 
     /// Whether the ride has begun at all (running or paused).
     pub fn in_ride(&self) -> bool {
-        matches!(self.ride, RideState::Running | RideState::Paused | RideState::Summary)
+        matches!(
+            self.ride,
+            RideState::Running | RideState::Paused | RideState::Summary
+        )
     }
 
     /// Reset all ride metrics and histories for a brand-new session.
@@ -1812,11 +1829,14 @@ mod tests {
         app.power_history.extend(vec![320u64; 20]);
 
         // 320 × 0.75 = 240, clears 200 + 5 → prompt fires.
-        assert_eq!(app.ftp_estimate(), Some(FtpEstimate {
-            window_seconds: 60,
-            best_power: 320,
-            multiplier: 0.75,
-        }));
+        assert_eq!(
+            app.ftp_estimate(),
+            Some(FtpEstimate {
+                window_seconds: 60,
+                best_power: 320,
+                multiplier: 0.75,
+            })
+        );
         assert_eq!(app.ftp_suggestion(), Some(240));
     }
 
@@ -1841,11 +1861,14 @@ mod tests {
         app.set_workout(Some(tiny_workout())); // not a ramp test
 
         app.power_history = vec![240u64; 1200];
-        assert_eq!(app.ftp_estimate(), Some(FtpEstimate {
-            window_seconds: 1200,
-            best_power: 240,
-            multiplier: 0.95,
-        }));
+        assert_eq!(
+            app.ftp_estimate(),
+            Some(FtpEstimate {
+                window_seconds: 1200,
+                best_power: 240,
+                multiplier: 0.95,
+            })
+        );
         assert_eq!(app.ftp_suggestion(), Some(228));
     }
 
@@ -1878,7 +1901,10 @@ mod tests {
         let mut ridden = fresh;
         ridden.has_ride_history = true;
         let text = buffer_text(&ridden);
-        assert!(!text.contains("NEW RIDER"), "hint should vanish once history exists");
+        assert!(
+            !text.contains("NEW RIDER"),
+            "hint should vanish once history exists"
+        );
     }
 
     #[test]

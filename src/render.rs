@@ -1,6 +1,20 @@
-// src/rendering.rs
-//
-// Rendering.rs is responsible for rendering the Olympus interface and its pages.
+/*
+* Rendering.rs is responsible for rendering the Olympus interface and its pages.
+* Copyright (C) 2026 Simon Stordal Amundgård
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program. If not, see http://www.gnu.org/licenses.
+*/
 
 use super::app::{App, BleUiState, DatabaseTab, RideState, Screen, SettingsField};
 use super::math::{coggan_pwr_model, olt_hr_model, zone2color};
@@ -190,11 +204,8 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    let [summary_area, hint_area] = Layout::vertical([
-        Constraint::Min(0),
-        Constraint::Length(4),
-    ])
-    .areas(inner);
+    let [summary_area, hint_area] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(4)]).areas(inner);
 
     let lines = vec![
         Line::from(Span::styled(
@@ -241,7 +252,10 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw(format!("{:.2}", d.ifac)),
         ]),
     ];
-    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Left), summary_area);
+    frame.render_widget(
+        Paragraph::new(lines).alignment(Alignment::Left),
+        summary_area,
+    );
 
     let hints = vec![
         Line::from(Span::styled(
@@ -311,9 +325,9 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
             Line::from(""),
             Line::from(Span::styled(
                 format!(
-                "[ Y ] Update FTP    [ N / Esc ] Keep {} W",
-                app.userdata().profile.ftp
-            ),
+                    "[ Y ] Update FTP    [ N / Esc ] Keep {} W",
+                    app.userdata().profile.ftp
+                ),
                 Style::default().fg(Color::Yellow),
             ))
             .alignment(Alignment::Center),
@@ -536,9 +550,7 @@ fn render_control_idle(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(conn_name, Style::default().fg(Color::White)),
             Span::styled(
                 format!("  [{}]", conn_state.label()),
-                Style::default()
-                    .fg(conn_style)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(conn_style).add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from(vec![
@@ -1340,8 +1352,7 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
                     let marker = if is_sel { " ▶ " } else { "   " };
                     let mm = w.duration_seconds / 60;
                     let ss = w.duration_seconds % 60;
-                    let subtitle =
-                        format!("{:>6.0} TSS   {:2}:{:02}", w.tss, mm, ss);
+                    let subtitle = format!("{:>6.0} TSS   {:2}:{:02}", w.tss, mm, ss);
                     Line::from(vec![
                         Span::styled(
                             marker,
@@ -1362,10 +1373,7 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
                             },
                         ),
                         Span::styled(if is_sel { "   " } else { "   " }, dark_gray),
-                        Span::styled(
-                            subtitle,
-                            if is_sel { white } else { dark_gray },
-                        ),
+                        Span::styled(subtitle, if is_sel { white } else { dark_gray }),
                     ])
                 })
                 .collect();
@@ -1554,7 +1562,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                     Span::styled(app.strap_name.clone(), Style::default().fg(Color::White)),
                     Span::styled(
                         "  [CONNECTED]",
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]));
             } else {
@@ -1675,11 +1685,8 @@ fn session_detail_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     let s = &detail.session;
 
     // Left: summary table. Right/bottom: power replay chart.
-    let [summary_area, chart_area] = Layout::vertical([
-        Constraint::Percentage(40),
-        Constraint::Percentage(60),
-    ])
-    .areas(main_area);
+    let [summary_area, chart_area] =
+        Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(main_area);
 
     let row = |label: &str, value: String| {
         Line::from(vec![
@@ -1693,10 +1700,7 @@ fn session_detail_draw(frame: &mut Frame, main_area: Rect, app: &App) {
             Span::styled(" Session ", cyan.add_modifier(Modifier::BOLD)),
             Span::styled(s.recorded_at.clone(), dark_gray),
         ]),
-        Line::from(Span::styled(
-            format!("  {}", s.filename),
-            dark_gray,
-        )),
+        Line::from(Span::styled(format!("  {}", s.filename), dark_gray)),
         Line::from(""),
         row("Distance", format!("{:.2} km", s.total_distance)),
         row("Calories", format!("{:.0} kcal", s.total_calories)),
@@ -1726,8 +1730,7 @@ fn session_detail_draw(frame: &mut Frame, main_area: Rect, app: &App) {
         .title(" Power (W) — replay ");
     if points.is_empty() {
         frame.render_widget(
-            Paragraph::new("  No per-second samples stored for this ride.")
-                .block(chart_block),
+            Paragraph::new("  No per-second samples stored for this ride.").block(chart_block),
             chart_area,
         );
         return;
@@ -1824,10 +1827,7 @@ fn stats_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     let vol_lines = vec![
         Line::from(vec![
             Span::styled(" Total time  ", dark_gray),
-            Span::styled(format!(
-                "{:>6.2} h",
-                summary.total_hours
-            ), white),
+            Span::styled(format!("{:>6.2} h", summary.total_hours), white),
         ]),
         Line::from(vec![
             Span::styled(" Total dist  ", dark_gray),
@@ -1836,7 +1836,10 @@ fn stats_draw(frame: &mut Frame, main_area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(" Volume      ", dark_gray),
             Span::styled(
-                format!("{:.2} km/h", summary.total_km / summary.total_hours.max(0.001)),
+                format!(
+                    "{:.2} km/h",
+                    summary.total_km / summary.total_hours.max(0.001)
+                ),
                 white,
             ),
         ]),

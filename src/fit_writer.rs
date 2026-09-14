@@ -1,17 +1,33 @@
-// src/fit_writer.rs
-//
-// A small, self-contained writer for Garmin FIT activity files.
-//
-// We generate a valid .fit with a FileId, a stream of Record messages (one per
-// sample) and a Session summary. The resulting file can be uploaded to Strava,
-// Garmin Connect, etc. This avoids pulling in a large FIT SDK dependency for
-// the handful of messages Olympus needs.
-//
-// FIT protocol v1 details used here:
-//   * Timestamps are seconds since the FIT epoch (1989-12-31 00:00:00 UTC).
-//   * Distances are stored as meters * 100 (uint32).
-//   * Speeds are stored as m/s * 1000 (uint16).
-//   * CRC16-CCITT (poly 0x1021, init 0x0000) is used for the file CRC.
+/*
+* A small, self-contained writer for Garmin FIT activity files.
+* Copyright (C) 2026 Simon Stordal Amundgård
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see http://www.gnu.org/licenses.
+*/
+// -------------------------------------------------------------
+/*
+* We generate a valid .fit with a FileId, a stream of Record messages (one per
+* sample) and a Session summary. The resulting file can be uploaded to Strava,
+* Garmin Connect, etc. This avoids pulling in a large FIT SDK dependency for
+* the handful of messages Olympus needs.
+*
+* FIT protocol v1 details used here:
+*   * Timestamps are seconds since the FIT epoch (1989-12-31 00:00:00 UTC).
+*   * Distances are stored as meters * 100 (uint32).
+*   * Speeds are stored as m/s * 1000 (uint16).
+*   * CRC16-CCITT (poly 0x1021, init 0x0000) is used for the file CRC.
+*/
 
 use std::fs::File;
 use std::io::Write;
@@ -369,7 +385,7 @@ mod tests {
     fn crc16_ccitt_known_vector() {
         // "123456789" -> 0xBB3D for CRC-16/ARC (the algorithm FIT uses).
         let crc = crc_of(b"123456789");
-         assert_eq!(crc, 0xBB3D);
+        assert_eq!(crc, 0xBB3D);
     }
 
     #[test]
@@ -398,9 +414,7 @@ mod tests {
         assert!(!records.is_empty());
 
         // Confirm the writer emits a SESSION summary message.
-        let has_session = records
-            .iter()
-            .any(|m| m.kind().as_u16() >> 8 == 18);
+        let has_session = records.iter().any(|m| m.kind().as_u16() >> 8 == 18);
         assert!(has_session, "activity has a SESSION message");
     }
 

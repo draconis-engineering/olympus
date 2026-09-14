@@ -1,8 +1,21 @@
-// src/ble.rs
-//
-// BLE connectivity module for Olympus.
-// Handles trainer/sensor connection via btleplug.
-//
+/*
+* BLE connectivity module for Olympus - Handles trainer/sensor connection via btleplug.
+* Copyright (C) 2026 Simon Stordal Amundgård
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see http://www.gnu.org/licenses.
+*/
+
 // Cross-platform: btleplug abstracts BlueZ (Linux), CoreBluetooth (macOS/iOS),
 // WinRT (Windows 10+) and DroidPlug (Android). We parse the standard GATT
 // profiles for Cycling Power, Heart Rate and the Fitness Machine Service so a
@@ -448,7 +461,9 @@ async fn find_sensors() -> Result<(Option<Peripheral>, Option<Peripheral>), Stri
             .await
             .map_err(|e| format!("connect failed: {e}"))?;
     }
-    if let Some(s) = strap.clone() && let Err(e) = s.connect().await {
+    if let Some(s) = strap.clone()
+        && let Err(e) = s.connect().await
+    {
         log::warn!("strap connect failed, dropping it: {e}");
         strap = None;
     }
@@ -639,7 +654,11 @@ fn ramp_steps(from: u16, to: u16, n: u32) -> Vec<u16> {
     }
     let delta = (to as f32 - from as f32) / n as f32;
     (1..=n)
-        .map(|i| (from as f32 + delta * i as f32).round().clamp(0.0, u16::MAX as f32) as u16)
+        .map(|i| {
+            (from as f32 + delta * i as f32)
+                .round()
+                .clamp(0.0, u16::MAX as f32) as u16
+        })
         .collect()
 }
 
@@ -696,23 +715,14 @@ mod tests {
     #[test]
     fn classify_groups_peripherals_by_role() {
         // FTMS trainer, with or without a relayed HR service, is a trainer.
-        assert_eq!(
-            classify(&[FMS_UUID], None),
-            Some(SensorRole::Trainer)
-        );
+        assert_eq!(classify(&[FMS_UUID], None), Some(SensorRole::Trainer));
         assert_eq!(
             classify(&[FMS_UUID, HRS_UUID], None),
             Some(SensorRole::Trainer)
         );
-        assert_eq!(
-            classify(&[CPS_UUID], None),
-            Some(SensorRole::Trainer)
-        );
+        assert_eq!(classify(&[CPS_UUID], None), Some(SensorRole::Trainer));
         // A device advertising only the Heart Rate Service is a strap.
-        assert_eq!(
-            classify(&[HRS_UUID], None),
-            Some(SensorRole::Strap)
-        );
+        assert_eq!(classify(&[HRS_UUID], None), Some(SensorRole::Strap));
         // Name heuristics kick in when no services advertise.
         assert_eq!(
             classify(&[], Some("Tacx Flux S2")),
@@ -810,8 +820,10 @@ mod tests {
         let steps = ramp_steps(100, 400, 25);
         assert_eq!(steps.len(), 25);
         assert_eq!(*steps.last().unwrap(), 400);
-        assert!(steps.windows(2).all(|w| w[0] <= w[1]),
-            "ramp must be non-decreasing: {steps:?}");
+        assert!(
+            steps.windows(2).all(|w| w[0] <= w[1]),
+            "ramp must be non-decreasing: {steps:?}"
+        );
 
         // Ramping down never undershoots below the floor.
         let down = ramp_steps(400, 50, 25);

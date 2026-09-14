@@ -1,6 +1,20 @@
-// src/main.rs
-//
-// Main entry point for the Olympus application.
+/*
+* Main entry point for the Olympus application.
+* Copyright (C) 2026 Simon Stordal Amundgård
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see http://www.gnu.org/licenses.
+*/
 
 mod app;
 mod ble;
@@ -77,12 +91,7 @@ fn handle_cli_args() -> bool {
 
 /// Persist a finished ride to a FIT file and the SQLite history, or discard it.
 /// Called from the main loop once the end-of-ride dialog picks an option.
-fn finish_ride(
-    app: &mut App,
-    fit: &mut FitWriter,
-    samples: &mut Vec<data::Sample>,
-    save: bool,
-) {
+fn finish_ride(app: &mut App, fit: &mut FitWriter, samples: &mut Vec<data::Sample>, save: bool) {
     if save && !fit.is_empty() {
         app.has_ride_history = true;
         std::fs::create_dir_all("data/.fit").ok();

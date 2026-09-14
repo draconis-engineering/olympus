@@ -1,25 +1,43 @@
-// src/erg.rs
-//
-// ERG resistance control module for Olympus.
-// Loads .erg / .zwo workout files, schedules interval targets, and (via the
-// BLE driver) drives the trainer's ERG target power.
-//
-// .erg format (Tacx / TrainerRoad legacy, simple key-value pairs):
-//   TARGET_POWER: 200     (watts)
-//   DURATION: 300          (seconds)
-//   REST_POWER: 120
-//   REST_DURATION: 180
-//
-// .zwo format (Zwift workout, XML):
-//   <workout_file>
-//     <workout>
-//       <Warmup Duration="600" PowerLow="0.5" PowerHigh="0.6"/>
-//       <IntervalsT Repeat="3" OnDuration="300" OffDuration="180"
-//                   OnPower="0.9" OffPower="0.5"/>
-//       <Cooldown Duration="300" PowerLow="0.4" PowerHigh="0.5"/>
-//     </workout>
-//   </workout_file>
-//   Powers may be absolute watts or a multiplier of FTP.
+/* src/erg.rs
+*
+* ERG resistance control module for Olympus.
+* Copyright (C) 2026 Simon Stordal Amundgård
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see http://www.gnu.org/licenses.
+*/
+// ------------------------------------------------------------------------
+/*
+* Loads .erg / .zwo workout files, schedules interval targets, and (via the
+* BLE driver) drives the trainer's ERG target power.
+*
+* .erg format (Tacx / TrainerRoad legacy, simple key-value pairs):
+*   TARGET_POWER: 200     (watts)
+*   DURATION: 300          (seconds)
+*   REST_POWER: 120
+*   REST_DURATION: 180
+*
+* .zwo format (Zwift workout, XML):
+*   <workout_file>
+*     <workout>
+*       <Warmup Duration="600" PowerLow="0.5" PowerHigh="0.6"/>
+*       <IntervalsT Repeat="3" OnDuration="300" OffDuration="180"
+*                   OnPower="0.9" OffPower="0.5"/>
+*       <Cooldown Duration="300" PowerLow="0.4" PowerHigh="0.5"/>
+*     </workout>
+*   </workout_file>
+*   Powers may be absolute watts or a multiplier of FTP.
+*/
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -307,11 +325,15 @@ pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
                             };
                             let steps = minutes + u32::from(remainder > 0);
                             for step in 0..steps {
-                                let step_duration =
-                                    if step == steps - 1 && remainder > 0 { remainder } else { 60 };
+                                let step_duration = if step == steps - 1 && remainder > 0 {
+                                    remainder
+                                } else {
+                                    60
+                                };
                                 targets.push(ErgTarget {
                                     target_power: (start_w as f64 + rate_w as f64 * step as f64)
-                                        .round() as u16,
+                                        .round()
+                                        as u16,
                                     duration_seconds: step_duration as u16,
                                     rest_power: 0,
                                     rest_duration: 0,
@@ -482,7 +504,10 @@ mod tests {
         .unwrap();
 
         let w = parse_zwo_workout(&path, 250).unwrap();
-        assert!(w.is_ramp_test, "rate ramp must tag the workout as a ramp test");
+        assert!(
+            w.is_ramp_test,
+            "rate ramp must tag the workout as a ramp test"
+        );
         // 3 one-minute steps: 100 W, 120 W, 140 W.
         let powers: Vec<u16> = w.steps.iter().map(|s| s.target_power).collect();
         assert_eq!(powers, [100, 120, 140]);

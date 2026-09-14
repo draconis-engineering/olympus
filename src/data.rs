@@ -1,6 +1,20 @@
-// src/data.rs
-//
-// Data.rs handles FIT file parsing, SQLite storage, and user profile management.
+/*
+* Data.rs handles FIT file parsing, SQLite storage, and user profile management.
+* Copyright (C) 2026 Simon Stordal Amundgård
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see http://www.gnu.org/licenses.
+*/
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -387,7 +401,10 @@ pub fn compute_stats(
         .map(|k| {
             let d = today - chrono::Duration::days(((num_weeks - 1 - k) as i64) * 7);
             let w = d.iso_week();
-            (format!("{}w{:02}", w.year(), w.week()), w.year() * 53 + w.week() as i32)
+            (
+                format!("{}w{:02}", w.year(), w.week()),
+                w.year() * 53 + w.week() as i32,
+            )
         })
         .collect();
     out.weeks = buckets
@@ -403,10 +420,15 @@ pub fn compute_stats(
          ORDER BY id DESC LIMIT ?1",
     )?;
     let rows = sessions.query_map([max_sessions as i64], |r| {
-        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, f64>(2)?))
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, f64>(2)?,
+        ))
     })?;
 
-    let mut power_stmt = conn.prepare("SELECT power FROM samples WHERE session_id = ?1 ORDER BY t")?;
+    let mut power_stmt =
+        conn.prepare("SELECT power FROM samples WHERE session_id = ?1 ORDER BY t")?;
 
     let mut total_secs: f64 = 0.0;
     for row in rows.flatten() {
@@ -423,8 +445,12 @@ pub fn compute_stats(
 
         // Power curve (best rolling average per window).
         out.best_1m = out.best_1m.max(crate::math::best_rolling_mean(&powers, 60));
-        out.best_5m = out.best_5m.max(crate::math::best_rolling_mean(&powers, 300));
-        out.best_20m = out.best_20m.max(crate::math::best_rolling_mean(&powers, 1200));
+        out.best_5m = out
+            .best_5m
+            .max(crate::math::best_rolling_mean(&powers, 300));
+        out.best_20m = out
+            .best_20m
+            .max(crate::math::best_rolling_mean(&powers, 1200));
 
         // TSS from NP + ride duration, then bucket by ISO week.
         if !powers.is_empty()
