@@ -32,24 +32,24 @@ That's it. Your rides land as `.fit` files in `data/.fit/` plus a row in the loc
 
 ## Hardware & Sensors
 
-| Thing | How it works |
-|---|---|
-| **Smart trainer** | Connects over Bluetooth as a standard Fitness Machine; Olympus sets the ERG target power so the trainer never freewheels. |
-| **Heart-rate strap** | Optional second Bluetooth device; its readings win over the trainer's relayed HR whenever both are live. |
-| **No trainer / no sensors** | Everything still works — you just get honest `--` stats instead of fabricated numbers. |
+| Thing                       | How it works                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Smart trainer**           | Connects over Bluetooth as a standard Fitness Machine; Olympus sets the ERG target power so the trainer never freewheels. |
+| **Heart-rate strap**        | Optional second Bluetooth device; its readings win over the trainer's relayed HR whenever both are live.                  |
+| **No trainer / no sensors** | Everything still works — you just get honest `--` stats instead of fabricated numbers.                                    |
 
 ## Controls
 
 While riding (Control panel):
 
-| Key | Action |
-|---|---|
-| `Space` / `Enter` | Pause / resume (clock and distance freeze) |
-| `+` / `-` | Nudge the ERG target up / down by 5 W |
-| `e` | Toggle auto-follow vs. hold the current watts |
-| `n` / `p` | Skip / go back a workout step |
-| `Q` | Finish ride → Save / Discard / Resume |
-| `?` | Keybind reference overlay |
+| Key               | Action                                        |
+| ----------------- | --------------------------------------------- |
+| `Space` / `Enter` | Pause / resume (clock and distance freeze)    |
+| `+` / `-`         | Nudge the ERG target up / down by 5 W         |
+| `e`               | Toggle auto-follow vs. hold the current watts |
+| `n` / `p`         | Skip / go back a workout step                 |
+| `Q`               | Finish ride → Save / Discard / Resume         |
+| `?`               | Keybind reference overlay                     |
 
 Rider settings (name, weight, height, FTP, max HR) live in `data/user/profile.json` and are edited under **Settings → User**.
 
