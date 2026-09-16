@@ -139,14 +139,14 @@ Start the app with no sensors paired and Olympus stays honest: the Control panel
 - [x] Settings (Bluetooth / System / User profile)
 - [x] Ride lifecycle: pause, summary Save/Discard/Resume, pause-proof stats
 
-### Locked slice · Phases 7–10 (shipped)
+### Locked slice · Phases 7–12 (shipped)
 
-Docs as source of truth ✅, trust the numbers ✅, HR-strap merge ✅, FTP ramp test + first-ride onboarding ✅ — running as `1.0.0`, tag `v1.0.0`.
+Docs as source of truth ✅, trust the numbers ✅, HR-strap merge ✅, FTP ramp test + first-ride onboarding ✅, Strava auto-upload (PKCE + queued retry) ✅ — running as `1.0.0`, tag `v1.0.0`.
 
 ### Next — the complete training app (`ROADMAP.md` §2, Phases 11–14)
 
-- [ ] **Phase 11 — Distribution & installation:** install wizards shipped — `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) — OS/arch detection, SHA-256 verify, data-home seeding, per-OS Bluetooth notes, re-run to update; release script + future Downloads page still open
-- [ ] **Phase 12 — Strava auto-upload:** OAuth (PKCE), queued retry, token gitignored
+- [x] **Phase 11 — Distribution & installation:** install wizards shipped — `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) — OS/arch detection, SHA-256 verify, data-home seeding, per-OS Bluetooth notes, re-run to update; release script + future Downloads page still open
+- [x] **Phase 12 — Strava auto-upload:** OAuth PKCE (`src/strava.rs` + `src/bin/strava-auth.rs`), queued retry on `Save`, token at `data/user/strava.json` gitignored
 - [ ] **Phase 13 — Training depth:** workout creator, plans / fitness-freshness, adherence, virtual shifting
 - [ ] **Phase 14 — In-app update check:** silent latest-release poll on boot → "re-run the setup wizard" notice
 

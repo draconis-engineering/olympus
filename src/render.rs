@@ -1463,8 +1463,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     });
 
     // Slice the inner sidebar area vertically for text item groups
-    let [bluetooth, system, user, _etc] = Layout::vertical([
+    let [bluetooth, system, user, strava, _etc] = Layout::vertical([
         Constraint::Length(3), // Extra vertical height gives visual breathing room
+        Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Min(0),
@@ -1513,10 +1514,20 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
         get_item_style(SettingsSelection::User),
     )]));
 
+    let stravatxt = Paragraph::new(Line::from(vec![Span::styled(
+        if *selected == SettingsSelection::Strava {
+            " -> Strava <- "
+        } else {
+            "    Strava    "
+        },
+        get_item_style(SettingsSelection::Strava),
+    )]));
+
     // Render menu items directly onto the canvas frame
     frame.render_widget(bttxt, bluetooth);
     frame.render_widget(systemtxt, system);
     frame.render_widget(usertxt, user);
+    frame.render_widget(stravatxt, strava);
 
     // Draw actual content inside the Right Control Panel based on active selection
     let inner_controls_area = controls_area.inner(Margin {
@@ -1590,10 +1601,26 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
             )));
             Paragraph::new(lines)
         }
-        SettingsSelection::System => Paragraph::new(format!(
-            "System Information\n------------------\nVersion: {}",
-            app.version()
-        )),
+        SettingsSelection::System => {
+            let queue_len = crate::strava::load_queue().len();
+            let strava_note = if queue_len > 0 {
+                format!("  Strava queue: {queue_len} pending upload(s)")
+            } else {
+                "  Strava queue: empty".to_string()
+            };
+            Paragraph::new(vec![
+                Line::from(Span::styled(
+                    "System Information",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                Line::from(Span::styled("------------------", Color::DarkGray)),
+                Line::from(format!("Version: {}", app.version())),
+                Line::from(""),
+                Line::from(Span::styled(strava_note, Color::DarkGray)),
+            ])
+        }
         SettingsSelection::User => {
             let profile = &app.userdata().profile;
             let st = &app.settings;
@@ -1660,6 +1687,99 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 },
                 Style::default().fg(Color::DarkGray),
             )));
+            Paragraph::new(lines)
+        }
+        SettingsSelection::Strava => {
+            let connected = app.strava_connected;
+            let queue = crate::strava::load_queue();
+            let status_color = if connected { Color::Green } else { Color::Yellow };
+            let status_label = if connected { "CONNECTED" } else { "NOT CONNECTED" };
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    "Strava Auto-Upload",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                Line::from(Span::styled("------------------", Color::DarkGray)),
+                Line::from(vec![
+                    Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        status_label,
+                        Style::default().fg(status_color).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+            ];
+            if connected {
+                lines.push(Line::from(vec![
+                    Span::styled("Token:  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("stored at data/user/strava.json", Color::Gray),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled("Queue:  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("{} pending", queue.len()),
+                        Style::default().fg(Color::White),
+                    ),
+                ]));
+                lines.push(Line::from(""));
+                lines.push(Line::from(vec![
+                    Span::styled("Enter ", Style::default().fg(Color::Yellow)),
+                    Span::styled("to disconnect", Color::DarkGray),
+                ]));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    "No token — rides will be queued and uploaded later.",
+                    Color::Gray,
+                )));
+                if !queue.is_empty() {
+                    lines.push(Line::from(vec![
+                        Span::styled("Queue:  ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(
+                            format!("{} pending", queue.len()),
+                            Style::default().fg(Color::Yellow),
+                        ),
+                    ]));
+                }
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    "To connect:",
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                )));
+                lines.push(Line::from(Span::styled(
+                    "  1. Create a Strava API app at strava.com/settings/api",
+                    Color::Gray,
+                )));
+                lines.push(Line::from(Span::styled(
+                    "  2. Set STRAVA_CLIENT_ID + STRAVA_CLIENT_SECRET env vars",
+                    Color::Gray,
+                )));
+                lines.push(Line::from(Span::styled(
+                    "  3. Run: cargo run --bin strava-auth  (or use the helper)",
+                    Color::Gray,
+                )));
+                lines.push(Line::from(Span::styled(
+                    "  4. Paste the code — token saved to strava.json",
+                    Color::Gray,
+                )));
+                lines.push(Line::from(""));
+                lines.push(Line::from(vec![
+                    Span::styled("c ", Style::default().fg(Color::Yellow)),
+                    Span::styled("to refresh status after auth", Color::DarkGray),
+                ]));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "On Save, FIT uploads automatically; offline goes to queue and retries next boot.",
+                Color::DarkGray,
+            )));
+            if let Some(msg) = &app.strava_status {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    msg.clone(),
+                    Style::default().fg(Color::Cyan),
+                )));
+            }
             Paragraph::new(lines)
         }
     };

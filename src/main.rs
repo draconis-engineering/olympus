@@ -25,6 +25,7 @@ mod fit_writer;
 mod math;
 mod nav;
 mod render;
+mod strava;
 
 use app::{Action, App, BleUiState, LiveData, UserData};
 use ble::BleState;
@@ -91,14 +92,24 @@ fn handle_cli_args() -> bool {
 
 /// Persist a finished ride to a FIT file and the SQLite history, or discard it.
 /// Called from the main loop once the end-of-ride dialog picks an option.
-fn finish_ride(app: &mut App, fit: &mut FitWriter, samples: &mut Vec<data::Sample>, save: bool) {
+/// Returns the saved FIT path on success so the caller can upload it.
+fn finish_ride(
+    app: &mut App,
+    fit: &mut FitWriter,
+    samples: &mut Vec<data::Sample>,
+    save: bool,
+) -> Option<std::path::PathBuf> {
+    let mut saved_path: Option<std::path::PathBuf> = None;
     if save && !fit.is_empty() {
         app.has_ride_history = true;
         std::fs::create_dir_all("data/.fit").ok();
         let stamp = Utc::now().format("%Y%m%d_%H%M%S");
         let fit_path = std::path::Path::new("data/.fit").join(format!("ride_{stamp}.fit"));
         match fit.finish(&fit_path) {
-            Ok(_) => log::info!("Wrote {}", fit_path.display()),
+            Ok(_) => {
+                log::info!("Wrote {}", fit_path.display());
+                saved_path = Some(fit_path.clone());
+            }
             Err(e) => log::error!("Failed to write FIT: {e}"),
         }
 
@@ -120,7 +131,11 @@ fn finish_ride(app: &mut App, fit: &mut FitWriter, samples: &mut Vec<data::Sampl
                 avg_power: app.livedata.avg_pwr,
                 timestamp: Utc::now().timestamp(),
             };
-            match data::save_ride(&conn, &session, &fit_path.to_string_lossy(), samples) {
+            let path_str = saved_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            match data::save_ride(&conn, &session, &path_str, samples) {
                 Ok(id) => log::info!("Saved ride #{id} with {} samples", samples.len()),
                 Err(e) => log::error!("Failed to persist ride: {e}"),
             }
@@ -132,6 +147,7 @@ fn finish_ride(app: &mut App, fit: &mut FitWriter, samples: &mut Vec<data::Sampl
     // Reset the recording buffers for the next ride.
     *fit = FitWriter::new();
     samples.clear();
+    saved_path
 }
 
 #[tokio::main]
@@ -163,6 +179,7 @@ async fn main() -> io::Result<()> {
 
     let mut app = App::new(livedata, userdata);
     app.set_workout(resolve_workout(profile.ftp));
+    app.refresh_strava();
 
     // Arriving with an existing session history turns off the new-rider
     // onboarding hint on Main (it lives for a truly fresh install).
@@ -170,6 +187,20 @@ async fn main() -> io::Result<()> {
         app.has_ride_history = data::list_sessions(&conn, 1)
             .map(|s| !s.is_empty())
             .unwrap_or(false);
+    }
+
+    // Retry any queued Strava uploads from a previous offline session.
+    {
+        let queued = strava::load_queue().len();
+        if queued > 0 {
+            log::info!("strava: retrying {queued} queued upload(s) on boot");
+        }
+        tokio::spawn(async move {
+            let n = strava::retry_queued_uploads().await;
+            if n > 0 {
+                log::info!("strava: uploaded {n} queued ride(s) on boot");
+            }
+        });
     }
 
     let fps = Duration::from_secs_f64(1.0 / 60.0);
@@ -295,11 +326,37 @@ async fn main() -> io::Result<()> {
         // When the end-of-ride dialog picks Save or Discard, persist/clear the
         // recording here (main owns the FIT writer and the sample buffer).
         if let Some(save) = app.pending_save.take() {
-            finish_ride(&mut app, &mut fit, &mut samples, save);
+            let saved_path = finish_ride(&mut app, &mut fit, &mut samples, save);
             // The session history changed; force the Database tab to rescan.
             app.database.loaded = false;
             // Stats aggregates changed too; recompute on next visit.
             app.stats.loaded = false;
+
+            // Strava auto-upload: on Save, push the FIT to Strava or queue
+            // for retry. Fire-and-forget so the UI stays snappy.
+            if let Some(fit_path) = saved_path {
+                let activity_name = app
+                    .last_workout_name
+                    .clone()
+                    .unwrap_or_else(|| "Olympus Ride".to_string());
+                if strava::is_connected() {
+                    app.strava_status = Some("Uploading to Strava...".to_string());
+                } else {
+                    // No token yet — queue for later; Settings → Strava explains.
+                    let _ = strava::enqueue_fit(&fit_path);
+                    app.strava_status =
+                        Some("FIT saved — Strava not connected (queued).".to_string());
+                }
+                let fit_path_clone = fit_path.clone();
+                tokio::spawn(async move {
+                    match strava::try_upload_or_queue(&fit_path_clone, Some(&activity_name)).await
+                    {
+                        Ok(true) => log::info!("strava: upload ok"),
+                        Ok(false) => log::info!("strava: queued for retry"),
+                        Err(e) => log::error!("strava: upload error: {e}"),
+                    }
+                });
+            }
         }
 
         // One-second metronome: advance the ride clock and update metrics.

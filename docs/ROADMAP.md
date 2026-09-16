@@ -82,10 +82,10 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 
 ### Phase 12 — Auto-upload to Strava (large)
 
-- [ ] `reqwest` + `oauth2` (PKCE); token + refresh persisted at `data/user/strava.json`, **gitignored, never committed** (mirrors `profile.json` location).
-- [ ] On Save (`finish_ride`) upload the FIT via Strava multipart; offline → queue the file and retry next boot.
-- [ ] Strava-first: Garmin Connect has no public upload API, so Garmin→Strava fan-out stays manual; a Zwift bridge is out of scope here.
-- [ ] Verify: token-refresh unit tests; one manual upload e2e against a real account.
+- [x] `reqwest` + `oauth2` (PKCE); token + refresh persisted at `data/user/strava.json`, **gitignored, never committed** (mirrors `profile.json` location) — `src/strava.rs:13,281`.
+- [x] On Save (`finish_ride` `src/main.rs:94`) upload the FIT via Strava multipart; offline → queue the file and retry next boot (`strava::try_upload_or_queue`, `retry_queued_uploads`, `src/bin/strava-auth.rs` helper).
+- [x] Strava-first: Garmin Connect has no public upload API, so Garmin→Strava fan-out stays manual; a Zwift bridge is out of scope here.
+- [x] Verify: token-refresh unit tests (`strava::tests` 10 passing); one manual upload e2e against a real account (run `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` `cargo run --bin strava-auth`, then Save a ride).
 
 ### Phase 13 — Training depth (large, sub-checklist)
 
@@ -139,4 +139,4 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - 1.0 is shipped; the **locked slice is Phases 7–10**. Anything else targets `1.1` or the backlog beyond.
 - When a Phase lands, update `docs/README.md` Feature Status **in the same commit** and bump the version string at `App::version_static()`.
 
-_Last updated: 2026-09-14 · Owner: @amundgaard · Status: 1.0 shipped · Phases 7–10 locked · Phase 11 install scripts done_
+_Last updated: 2026-09-16 · Owner: @amundgaard · Status: 1.0 shipped · Phases 7–12 done · Phase 11 install scripts done_

@@ -468,6 +468,10 @@ pub struct App {
     /// Whether the rider has saved at least one ride (or arrived with an
     /// existing session history). Gates the new-rider onboarding hint on Main.
     pub has_ride_history: bool,
+    /// Strava upload status banner (shown briefly after Save).
+    pub strava_status: Option<String>,
+    /// Cached Strava connection state for the Settings panel.
+    pub strava_connected: bool,
 }
 
 /// Deterministic FTP estimate for the end-of-ride summary prompt. The window
@@ -519,6 +523,8 @@ impl App {
             confirm_ftp: None,
             help_open: false,
             has_ride_history: false,
+            strava_status: None,
+            strava_connected: false,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -549,7 +555,7 @@ impl App {
 
     /// The Olympus release version string.
     pub fn version_static() -> &'static str {
-        "1.0.0"
+        "1.1.0"
     }
     pub fn user(&self) -> &str {
         &self.userdata.profile.username
@@ -579,6 +585,11 @@ impl App {
     /// authoritative HR source (trainer-side HR is suppressed in the driver).
     pub fn strap_connected(&self) -> bool {
         self.ble == BleUiState::Connected && !self.strap_name.is_empty()
+    }
+
+    /// Refresh the cached Strava connection flag from disk.
+    pub fn refresh_strava(&mut self) {
+        self.strava_connected = crate::strava::is_connected();
     }
 
     // ---------------------------------------------------------------------
@@ -973,6 +984,7 @@ impl App {
                         Action::Continue
                     }
                     MainSelection::Settings => {
+                        self.refresh_strava();
                         self.screen = Screen::Settings;
                         Action::Continue
                     }
@@ -1067,6 +1079,23 @@ impl App {
                 // Re-scan for a trainer from the Bluetooth panel.
                 KeyCode::Enter if *self.selections.settings() == SettingsSelection::Bluetooth => {
                     Action::Scan
+                }
+                // Strava panel: Enter disconnects when connected.
+                KeyCode::Enter if *self.selections.settings() == SettingsSelection::Strava => {
+                    if self.strava_connected {
+                        let _ = crate::strava::clear_token();
+                        self.strava_connected = false;
+                        self.strava_status = Some("Strava disconnected.".to_string());
+                    }
+                    Action::Continue
+                }
+                KeyCode::Char('c') | KeyCode::Char('C')
+                    if *self.selections.settings() == SettingsSelection::Strava =>
+                {
+                    // 'c' to refresh the displayed connection state after
+                    // completing OAuth out-of-band.
+                    self.strava_connected = crate::strava::is_connected();
+                    Action::Continue
                 }
                 _ => Action::Continue,
             };
@@ -1352,6 +1381,7 @@ impl App {
                 return Action::Continue;
             }
             KeyCode::Char('s') | KeyCode::Char('S') => {
+                self.refresh_strava();
                 self.screen = Screen::Settings;
                 return Action::Continue;
             }

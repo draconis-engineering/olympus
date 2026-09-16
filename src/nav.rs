@@ -114,13 +114,15 @@ pub enum SettingsSelection {
     Bluetooth,
     System,
     User,
+    Strava,
 }
 
 impl SettingsSelection {
-    const ALL: [SettingsSelection; 3] = [
+    const ALL: [SettingsSelection; 4] = [
         SettingsSelection::Bluetooth,
         SettingsSelection::System,
         SettingsSelection::User,
+        SettingsSelection::Strava,
     ];
 
     pub fn next(&mut self) {
