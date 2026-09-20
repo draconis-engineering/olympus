@@ -26,6 +26,7 @@ mod math;
 mod nav;
 mod render;
 mod strava;
+mod update;
 
 use app::{Action, App, BleUiState, LiveData, UserData};
 use ble::BleState;
@@ -203,6 +204,25 @@ async fn main() -> io::Result<()> {
         });
     }
 
+    // Phase 14: silent update check (non-blocking, 2s timeout, cached).
+    let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    {
+        let current = App::version_static().to_string();
+        // Seed banner from cache instantly so offline boot stays snappy.
+        if let Some(cached) = update::load_cache().latest_tag {
+            if update::is_newer(&current, &cached) {
+                app.update_notice = Some(format!(
+                    "Update available: {cached} (you have v{current}) — re-run scripts/install.sh to update"
+                ));
+            }
+        }
+        tokio::spawn(async move {
+            if let Some(msg) = update::check_for_update(&current).await {
+                let _ = update_tx.send(msg);
+            }
+        });
+    }
+
     let fps = Duration::from_secs_f64(1.0 / 60.0);
 
     // ---- BLE driver -------------------------------------------------------
@@ -281,6 +301,11 @@ async fn main() -> io::Result<()> {
                     app.strap_name.clear();
                 }
             }
+        }
+
+        // Poll update-check result (non-blocking, Phase 14).
+        while let Ok(msg) = update_rx.try_recv() {
+            app.update_notice = Some(msg);
         }
 
         // Process incoming telemetry as it arrives (avoids blocking the loop).

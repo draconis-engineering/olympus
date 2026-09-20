@@ -4,9 +4,7 @@
 //! It generates a PKCE verifier/challenge, prints the authorize URL, and
 //! exchanges the pasted `code` for a token saved to `data/user/strava.json`.
 
-#[path = "../strava.rs"]
-mod strava;
-
+use olympus::strava;
 use std::io::{self, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

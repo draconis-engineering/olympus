@@ -472,6 +472,8 @@ pub struct App {
     pub strava_status: Option<String>,
     /// Cached Strava connection state for the Settings panel.
     pub strava_connected: bool,
+    /// Update-check banner (Phase 14): "new release available — re-run installer".
+    pub update_notice: Option<String>,
 }
 
 /// Deterministic FTP estimate for the end-of-ride summary prompt. The window
@@ -525,6 +527,7 @@ impl App {
             has_ride_history: false,
             strava_status: None,
             strava_connected: false,
+            update_notice: None,
         }
     }
     pub fn screen(&self) -> Screen {
@@ -1356,6 +1359,17 @@ impl App {
                 }
                 _ => {}
             }
+            return Action::Continue;
+        }
+
+        // Update notice banner (Phase 14) is dismissible with Esc / u.
+        if self.update_notice.is_some()
+            && matches!(
+                key_code,
+                KeyCode::Esc | KeyCode::Char('u') | KeyCode::Char('U')
+            )
+        {
+            self.update_notice = None;
             return Action::Continue;
         }
 

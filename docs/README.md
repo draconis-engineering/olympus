@@ -28,7 +28,7 @@ That's it. Your rides land as `.fit` files in `data/.fit/` plus a row in the loc
 - **Estimates your FTP** — a Ramp Test that suggests a functional threshold power from your best 60-second effort, applied with one keystroke.
 - **Tracks you live** — big power/HR readouts, Braille power/cadence/HR/speed graphs, riding zones, and live NP/IF/TSS/kJ while you pedal.
 - **Keeps everything** — per-second samples in local SQLite: session history with drill-down, weekly training load (TSS), and 1m/5m/20m power records.
-- **Exports to the platforms you already use** — saves Garmin-valid `.fit` files you can drag into Garmin Connect (which auto-syncs to Strava). Direct Strava upload is on the roadmap.
+- **Exports to the platforms you already use** — saves Garmin-valid `.fit` files you can drag into Garmin Connect (auto-syncs to Strava), and **auto-uploads to Strava on Save** when connected (`Settings → Strava` PKCE, `src/strava.rs`), queued offline and retried next boot.
 
 ## Hardware & Sensors
 
@@ -55,7 +55,11 @@ Rider settings (name, weight, height, FTP, max HR) live in `data/user/profile.js
 
 ## Uploading a Ride
 
-Every saved ride is written as a Garmin-valid FIT activity to `data/.fit/ride_*.fit`. To get it onto your accounts, open the folder and drag the newest file onto Garmin Connect:
+Every saved ride is written as a Garmin-valid FIT activity to `data/.fit/ride_*.fit`.
+
+**Auto-upload (Phase 12):** if Strava is connected (`Settings → Strava` — `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` + `cargo run --bin strava-auth`), Olympus uploads the FIT on **Save** via `POST /api/v3/uploads` (`src/strava.rs:370`); offline files are queued at `data/user/strava_queue.json` and retried next boot. Disconnect with `Enter` on the Strava panel (`src/app.rs:1077`).
+
+**Manual:** drag the newest file onto Garmin Connect (auto-syncs to Strava/watch):
 
 ```bash
 xdg-open data/.fit        # Linux
@@ -63,7 +67,7 @@ open data/.fit            # macOS
 explorer data\.fit        # Windows
 ```
 
-Garmin Connect then auto-syncs to Strava (and your watch). Direct Garmin upload isn't planned (no public API); **Strava auto-upload** is Phase 12 on the roadmap — until then Olympus never talks to a cloud service.
+Garmin Connect then auto-syncs to Strava. Direct Garmin upload isn't planned (no public API); Olympus only talks to Strava when you connect it — otherwise it stays offline.
 
 ## Bluetooth Setup
 
@@ -110,6 +114,7 @@ Olympus is split into a **UI loop** (renders the TUI) and an **async runtime** (
 - **Metrics** — `src/math.rs` computes NP / IF / TSS / rolling power / zone time.
 - **Fitness files** — `src/fit_writer.rs` emits Garmin-valid `.fit` activities.
 - **Persistence** — `src/data.rs` owns the SQLite database and the JSON rider profile.
+- **Strava sync** — `src/strava.rs` handles PKCE OAuth, token refresh, and queued multipart FIT upload; `src/bin/strava-auth.rs` is the one-time connect helper.
 
 ### Tech Stack
 
@@ -141,13 +146,13 @@ Start the app with no sensors paired and Olympus stays honest: the Control panel
 
 ### Locked slice · Phases 7–12 (shipped)
 
-Docs as source of truth ✅, trust the numbers ✅, HR-strap merge ✅, FTP ramp test + first-ride onboarding ✅, Strava auto-upload (PKCE + queued retry) ✅ — running as `1.0.0`, tag `v1.0.0`.
+Docs as source of truth ✅, trust the numbers ✅, HR-strap merge ✅, FTP ramp test + first-ride onboarding ✅, Strava auto-upload (PKCE + queued retry) ✅ — running as `1.1.0`, tag `v1.1.0`.
 
 ### Next — the complete training app (`ROADMAP.md` §2, Phases 11–14)
 
 - [x] **Phase 11 — Distribution & installation:** install wizards shipped — `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) — OS/arch detection, SHA-256 verify, data-home seeding, per-OS Bluetooth notes, re-run to update; release script + future Downloads page still open
 - [x] **Phase 12 — Strava auto-upload:** OAuth PKCE (`src/strava.rs` + `src/bin/strava-auth.rs`), queued retry on `Save`, token at `data/user/strava.json` gitignored
 - [ ] **Phase 13 — Training depth:** workout creator, plans / fitness-freshness, adherence, virtual shifting
-- [ ] **Phase 14 — In-app update check:** silent latest-release poll on boot → "re-run the setup wizard" notice
+- [x] **Phase 14 — In-app update check:** silent latest-release poll on boot (`src/update.rs`) → banner "re-run scripts/install.sh" (`Esc`/`u` dismiss)
 
 > Full phased plan, competitive gap table, and out-of-scope list: [`ROADMAP.md`](ROADMAP.md)

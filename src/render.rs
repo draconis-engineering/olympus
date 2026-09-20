@@ -2006,8 +2006,29 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Screen::SessionDetail => session_detail_draw(frame, main_area, app),
     };
 
-    // Overlays (rendered on top of everything).
     let full = frame.area();
+    // Update banner (Phase 14): silent notice, dismissible with Esc/u.
+    if let Some(notice) = &app.update_notice {
+        let banner_area = Rect {
+            x: full.x,
+            y: full.y,
+            width: full.width,
+            height: 1,
+        };
+        let banner = Paragraph::new(Line::from(vec![
+            Span::styled(
+                " \u{25B2} ",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(notice.clone(), Style::default().fg(Color::Yellow)),
+            Span::styled("  [Esc/u dismiss]", Style::default().fg(Color::DarkGray)),
+        ]))
+        .style(Style::default().bg(Color::Black))
+        .alignment(Alignment::Center);
+        frame.render_widget(banner, banner_area);
+    }
+
+    // Overlays (rendered on top of everything).
     if app.ride == RideState::Summary {
         render_summary(frame, app, full);
     } else if app.confirm_quit {

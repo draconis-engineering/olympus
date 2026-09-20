@@ -2,8 +2,8 @@
 
 > **Vision:** _A training app you own._ A free, offline-first, privacy-minded TUI that connects to any modern smart trainer over the standard Bluetooth Fitness Machine Service, executes workouts with perfect ERG resistance, and writes a Garmin-valid `.fit` you can drop into Garmin Connect → Strava. No video worlds, no MMO server, no social feed — just perfect workouts.
 
-**Current version:** `1.0.0` (`App::version_static()` · `src/app.rs`) · dashed toward `1.1.0`
-**1.0 MVP promise — met.** Fresh install → pair trainer → pick a workout → ride ERG with live Braille graphs and pause/skip/nudge/hold → finish with a Save/Discard summary → a FIT lands in `data/.fit` that Garmin/Strava accept → the ride shows up in local history + stats. No JSON hand-editing, no restart on a Bluetooth hiccup.
+**Current version:** `1.1.0` (`App::version_static()` · `src/app.rs`) · dashed toward `1.2.0`
+**1.0 MVP promise — met.** Fresh install → pair trainer → pick a workout → ride ERG with live Braille graphs and pause/skip/nudge/hold → finish with a Save/Discard summary → a FIT lands in `data/.fit` that Garmin/Strava accept → the ride shows up in local history + stats. No JSON hand-editing, no restart on a Bluetooth hiccup. **1.1 adds Strava PKCE auto-upload with offline queue.**
 
 This roadmap was cut 2026-09-04 after a competitive pass against the dominant ride apps (Strava / Rouvy / TrainerRoad / Zwift / Garmin's Tacx Training). Phases 0–6 shipped on 2026-09-08; the "complete training app" gap work is tracked here as Phases 7–14.
 
@@ -42,7 +42,7 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 
 ## 2. Build Plan — Phases 7–14 (the complete training app)
 
-> **Locked slice: Phases 7–10 shipped** (source-of-truth → trust → HR → FTP ramp). Phase 10 landed the version gate: **`1.0.0` + tag `v1.0.0`**. Phases 11–14 follow, then `1.1.0`.
+> **Locked slice: Phases 7–12 shipped** (source-of-truth → trust → HR → FTP ramp → Strava PKCE). Phase 12 landed the version gate: **`1.1.0` + tag `v1.1.0`**. Phases 13–14 follow, then `1.2.0`.
 
 ### Phase 7 — Docs = source of truth (this commit, small)
 
@@ -97,9 +97,9 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 
 ### Phase 14 — In-app update check (small)
 
-- [ ] On startup, `reqwest`-poll the GitHub latest release (silent, non-blocking); if a newer tag exists, show a notice in the UI ("new release available — re-run the setup wizard to update") rather than self-updating.
-- [ ] Optional: ping the wizard's pinned release hash so the notice can link/stage the artifact; never auto-install over a user's data home.
-- [ ] Verify: offline boot stays instant (timeout + cached result); notice appears once per boot, dismissible.
+- [x] On startup, `reqwest`-poll the GitHub latest release (silent, non-blocking, 2 s timeout, `data/user/update_cache.json` cached); if a newer tag exists, show a banner in the UI ("Update available: vX.Y.Z — re-run scripts/install.sh to update") rather than self-updating — `src/update.rs:13`, `src/app.rs:477`, `src/main.rs:206`, `src/render.rs:1982`.
+- [x] Optional: wizard's pinned release hash stays docs-only; never auto-install over a user's data home.
+- [x] Verify: offline boot stays instant (timeout + cached result); notice appears once per boot, dismissible (`Esc`/`u`, `App::handle_key_press:1368`).
 
 ### Phase 15 - Full Triathlon Suite (Very large)
 
@@ -139,4 +139,4 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - 1.0 is shipped; the **locked slice is Phases 7–10**. Anything else targets `1.1` or the backlog beyond.
 - When a Phase lands, update `docs/README.md` Feature Status **in the same commit** and bump the version string at `App::version_static()`.
 
-_Last updated: 2026-09-16 · Owner: @amundgaard · Status: 1.0 shipped · Phases 7–12 done · Phase 11 install scripts done_
+_Last updated: 2026-09-20 · Owner: @amundgaard · Status: 1.1 shipped · Phases 7–12 done · Phase 11 install scripts done_
