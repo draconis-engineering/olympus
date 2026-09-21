@@ -106,6 +106,8 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - [ ] Parsers/Writers for DSML/DRML (Draconis Swimming/Running Markup Languages, XML-based)
 - [ ] Week/Month/Block/Year-plan structs, hierarchical structure
 - [ ] Automatic generation of plans from raw data
+- [ ] Focus-based terminal navigation w/ highlighting (current arrow-based navigation is inconsistent and confusing, especially in settings.)
+- [ ] Refresh the stats page. Things like volume measured in km/h make no sense.
 
 ---
 
