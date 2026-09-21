@@ -23,5 +23,5 @@ xml = "1.4"
 reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls"], default-features = false }
 oauth2 = "5.0"
 sha2 = "0.11"
-base64 = "0.22"
+base64 = "0.23"
 url = "2.5"
