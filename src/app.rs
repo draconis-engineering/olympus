@@ -350,6 +350,9 @@ pub struct SettingsState {
     pub draft: String,
     /// Whether the profile has unsaved changes to persist.
     pub dirty: bool,
+    /// Which pane has keyboard focus (Sidebar = panel list, Content = detail).
+    /// `Tab` toggles focus so arrow keys always act on the focused pane.
+    pub focus: crate::nav::Focus,
 }
 impl Default for SettingsState {
     fn default() -> Self {
@@ -358,6 +361,7 @@ impl Default for SettingsState {
             editing: false,
             draft: String::new(),
             dirty: false,
+            focus: crate::nav::Focus::default(),
         }
     }
 }
@@ -988,6 +992,7 @@ impl App {
                     }
                     MainSelection::Settings => {
                         self.refresh_strava();
+                        self.settings.focus = crate::nav::Focus::Sidebar;
                         self.screen = Screen::Settings;
                         Action::Continue
                     }
@@ -1064,52 +1069,19 @@ impl App {
         }
     }
 
-    /// Key handling for the Settings screen (rider-profile editor).
+    /// Key handling for the Settings screen — focus-based navigation.
+    ///
+    /// `Tab`/`Shift+Tab` (and `Left`/`Right`) toggle focus between the left
+    /// sidebar (panel list) and the right content pane. Arrow keys then act
+    /// only on the focused pane so `Up`/`Down` never ambiguously mean "panel"
+    /// vs. "field" — the highlight shows where they will act.
     fn handle_settings_key(&mut self, key_code: KeyCode) -> Action {
-        use super::nav::SettingsSelection;
+        use super::nav::{Focus, SettingsSelection};
 
-        // The profile editor only lives on the "User" panel.
-        if *self.selections.settings() != SettingsSelection::User {
-            return match key_code {
-                KeyCode::Up => {
-                    self.selections.prev(self.screen);
-                    Action::Continue
-                }
-                KeyCode::Down => {
-                    self.selections.next(self.screen);
-                    Action::Continue
-                }
-                // Re-scan for a trainer from the Bluetooth panel.
-                KeyCode::Enter if *self.selections.settings() == SettingsSelection::Bluetooth => {
-                    Action::Scan
-                }
-                // Strava panel: Enter disconnects when connected.
-                KeyCode::Enter if *self.selections.settings() == SettingsSelection::Strava => {
-                    if self.strava_connected {
-                        let _ = crate::strava::clear_token();
-                        self.strava_connected = false;
-                        self.strava_status = Some("Strava disconnected.".to_string());
-                    }
-                    Action::Continue
-                }
-                KeyCode::Char('c') | KeyCode::Char('C')
-                    if *self.selections.settings() == SettingsSelection::Strava =>
-                {
-                    // 'c' to refresh the displayed connection state after
-                    // completing OAuth out-of-band.
-                    self.strava_connected = crate::strava::is_connected();
-                    Action::Continue
-                }
-                _ => Action::Continue,
-            };
-        }
-
-        // On the User panel: editing an active field.
+        // Editing captures all keys for the draft buffer.
         if self.settings.editing {
             match key_code {
                 KeyCode::Char(c) => {
-                    // Keep the draft focused: restrict numeric fields to digits
-                    // and a single decimal point; the name accepts any char.
                     let is_numeric = self.settings.field != SettingsField::Name;
                     let mut push = true;
                     if is_numeric {
@@ -1147,34 +1119,111 @@ impl App {
                 }
                 _ => Action::Continue,
             }
-        } else {
-            // Not editing: navigate between profile fields / start editing.
+        } else if self.settings.focus == Focus::Sidebar {
+            // Sidebar focused: Up/Down cycles panels, Tab/Right moves focus to
+            // content, Enter triggers panel action (or moves into User fields).
             match key_code {
                 KeyCode::Up => {
-                    self.settings.field = self.settings.field.prev();
-                    Action::Continue
-                }
-                KeyCode::Down => {
-                    self.settings.field = self.settings.field.next();
-                    Action::Continue
-                }
-                KeyCode::Enter => {
-                    let settings = &mut self.settings;
-                    let profile = &mut self.userdata.profile;
-                    settings.begin_edit(profile);
-                    Action::Continue
-                }
-                KeyCode::Tab | KeyCode::Right => {
-                    // Move to the next settings panel (escape hatch from the
-                    // field editor so the user is never trapped on User).
-                    self.selections.next(self.screen);
-                    Action::Continue
-                }
-                KeyCode::BackTab | KeyCode::Left => {
                     self.selections.prev(self.screen);
                     Action::Continue
                 }
+                KeyCode::Down => {
+                    self.selections.next(self.screen);
+                    Action::Continue
+                }
+                KeyCode::Tab | KeyCode::Right => {
+                    self.settings.focus = Focus::Content;
+                    Action::Continue
+                }
+                KeyCode::BackTab | KeyCode::Left => {
+                    // Already at sidebar — keep focus, but allow wrap as prev panel
+                    // for users who expect Left to navigate (backward compat).
+                    self.selections.prev(self.screen);
+                    Action::Continue
+                }
+                KeyCode::Enter => match *self.selections.settings() {
+                    SettingsSelection::Bluetooth => Action::Scan,
+                    SettingsSelection::Strava if self.strava_connected => {
+                        let _ = crate::strava::clear_token();
+                        self.strava_connected = false;
+                        self.strava_status = Some("Strava disconnected.".to_string());
+                        Action::Continue
+                    }
+                    SettingsSelection::User => {
+                        // Enter on the User row moves focus into the field list.
+                        self.settings.focus = Focus::Content;
+                        Action::Continue
+                    }
+                    _ => Action::Continue,
+                },
+                KeyCode::Char('c') | KeyCode::Char('C')
+                    if *self.selections.settings() == SettingsSelection::Strava =>
+                {
+                    self.strava_connected = crate::strava::is_connected();
+                    Action::Continue
+                }
                 _ => Action::Continue,
+            }
+        } else {
+            // Content focused.
+            let panel = *self.selections.settings();
+            match panel {
+                SettingsSelection::User => match key_code {
+                    KeyCode::Up => {
+                        self.settings.field = self.settings.field.prev();
+                        Action::Continue
+                    }
+                    KeyCode::Down => {
+                        self.settings.field = self.settings.field.next();
+                        Action::Continue
+                    }
+                    KeyCode::Enter => {
+                        let settings = &mut self.settings;
+                        let profile = &mut self.userdata.profile;
+                        settings.begin_edit(profile);
+                        Action::Continue
+                    }
+                    KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Esc => {
+                        self.settings.focus = Focus::Sidebar;
+                        Action::Continue
+                    }
+                    KeyCode::Right => {
+                        // cycle to next panel from content as an escape hatch
+                        self.selections.next(self.screen);
+                        self.settings.focus = Focus::Sidebar;
+                        Action::Continue
+                    }
+                    _ => Action::Continue,
+                },
+                // Non-User panels: content is read-only, Enter still triggers action.
+                _ => match key_code {
+                    KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Esc => {
+                        self.settings.focus = Focus::Sidebar;
+                        Action::Continue
+                    }
+                    KeyCode::Enter if panel == SettingsSelection::Bluetooth => Action::Scan,
+                    KeyCode::Enter if panel == SettingsSelection::Strava && self.strava_connected => {
+                        let _ = crate::strava::clear_token();
+                        self.strava_connected = false;
+                        self.strava_status = Some("Strava disconnected.".to_string());
+                        Action::Continue
+                    }
+                    KeyCode::Char('c') | KeyCode::Char('C') if panel == SettingsSelection::Strava => {
+                        self.strava_connected = crate::strava::is_connected();
+                        Action::Continue
+                    }
+                    KeyCode::Up | KeyCode::Down => {
+                        // Allow panel cycling from content as well (keeps Up/Down useful
+                        // even when focus is on the right pane).
+                        if key_code == KeyCode::Up {
+                            self.selections.prev(self.screen);
+                        } else {
+                            self.selections.next(self.screen);
+                        }
+                        Action::Continue
+                    }
+                    _ => Action::Continue,
+                },
             }
         }
     }
@@ -1396,6 +1445,7 @@ impl App {
             }
             KeyCode::Char('s') | KeyCode::Char('S') => {
                 self.refresh_strava();
+                self.settings.focus = crate::nav::Focus::Sidebar;
                 self.screen = Screen::Settings;
                 return Action::Continue;
             }

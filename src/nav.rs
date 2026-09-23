@@ -155,6 +155,35 @@ impl StatsSelection {
     }
 }
 
+/// Focus target for split-pane screens (Settings, Database).
+/// `Sidebar` = left navigation list has keyboard focus; `Content` = right
+/// detail pane has focus. `Tab` / `Shift+Tab` toggles between them so arrow
+/// keys always do one predictable thing for the focused pane.
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
+pub enum Focus {
+    #[default]
+    Sidebar,
+    Content,
+}
+
+impl Focus {
+    #[allow(dead_code)]
+    pub fn toggle(self) -> Self {
+        match self {
+            Focus::Sidebar => Focus::Content,
+            Focus::Content => Focus::Sidebar,
+        }
+    }
+    #[allow(dead_code)]
+    pub fn is_sidebar(self) -> bool {
+        self == Focus::Sidebar
+    }
+    #[allow(dead_code)]
+    pub fn is_content(self) -> bool {
+        self == Focus::Content
+    }
+}
+
 #[derive(PartialEq)]
 pub struct Selections {
     pub main_select: MainSelection,

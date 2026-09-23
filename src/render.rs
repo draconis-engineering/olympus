@@ -110,8 +110,13 @@ fn render_help(frame: &mut Frame, area: Rect) {
         key("m", "Main menu"),
         key("c", "Control panel (idle until you start a ride)"),
         key("d", "Database — workouts + session history"),
-        key("s", "Settings"),
+        key("s", "Settings (Tab toggles focus)"),
         key("?", "close this help"),
+        section("Settings — Focus nav"),
+        key("Tab / Right", "sidebar → content (focused pane gets Cyan border)"),
+        key("Shift+Tab / Left", "content → sidebar"),
+        key("Up / Down", "move in focused pane (panel or field)"),
+        key("Enter", "scan / disconnect / edit (focused pane)"),
         section("Ride — Control panel"),
         key("Space / Enter", "pause / resume"),
         key("Q", "finish ride — open summary"),
@@ -394,7 +399,7 @@ fn header(app: &App) -> Paragraph<'_> {
         Span::from(" "),
         Span::from(format!("{}", app.version())).fg(Color::White),
         Span::from(" "),
-        Span::from(format!("{}", Local::now())).fg(Color::White),
+        Span::from(format!("{}", Local::now().format("%Y-%m-%d %H:%M:%S"))).fg(Color::White),
     ]);
     let headerblock = Block::default()
         .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
@@ -1434,23 +1439,47 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
 // -------------------------------------------------------
 
 fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::nav::Focus;
     let selected = app.selections().settings();
+    let focus = app.settings.focus;
 
     // Divide screen into primary structural blocks
     let [sidebar_area, controls_area] =
         Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)]).areas(area);
 
-    // Structural Frame 1: Left Navigation Menu Container
+    // Focus-based border highlighting: the focused pane gets a Cyan border,
+    // the unfocused pane a DarkGray border. An explicit "● FOCUS" marker in
+    // the title makes the active pane obvious even without color.
+    let sidebar_focused = focus == Focus::Sidebar;
+    let content_focused = focus == Focus::Content;
+    let nav_title = if sidebar_focused {
+        " Settings ● FOCUS "
+    } else {
+        " Settings "
+    };
+    let cfg_title = if content_focused {
+        " Configuration ● FOCUS "
+    } else {
+        " Configuration "
+    };
     let nav_block = Block::default()
-        .title(" Settings ")
+        .title(nav_title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(if sidebar_focused {
+            Color::Cyan
+        } else {
+            Color::DarkGray
+        }));
 
     // Structural Frame 2: Right Active Content Container
     let controls_block = Block::default()
-        .title(" Configuration ")
+        .title(cfg_title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(if content_focused {
+            Color::Cyan
+        } else {
+            Color::DarkGray
+        }));
 
     // Render the outer structural borders
     frame.render_widget(nav_block, sidebar_area);
@@ -1472,16 +1501,24 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     ])
     .areas(inner_sidebar);
 
-    // 5. Dynamic Style Helper: Creates an indicator block layout entirely via text styling
+    // 5. Dynamic Style Helper: focus-aware highlighting.
+    // When the sidebar is focused, the selected row gets Cyan bg/Bold.
+    // When focus is on the content pane, the selected sidebar row is
+    // muted (Yellow) so the user sees where Up/Down will act.
     let get_item_style = |selection: SettingsSelection| {
         if *selected == selection {
-            // Selected item: Reverse video look or bold vivid color
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
+            if sidebar_focused {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            }
         } else {
-            // Inactive items: Dimmed text sitting cleanly against background
             Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
         }
     };
@@ -1599,6 +1636,16 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 "Any BLE smart trainer pairs over the open Fitness Machine Service; an HR strap can pair as a second device.",
                 Color::DarkGray,
             )));
+            lines.push(Line::from(""));
+            let focus_hint = if content_focused {
+                "FOCUS: Content — Enter: scan  Tab/Left/Esc: sidebar"
+            } else {
+                "FOCUS: Sidebar — Up/Down: panel  Tab/Right: content"
+            };
+            lines.push(Line::from(Span::styled(
+                focus_hint,
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+            )));
             Paragraph::new(lines)
         }
         SettingsSelection::System => {
@@ -1607,6 +1654,11 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 format!("  Strava queue: {queue_len} pending upload(s)")
             } else {
                 "  Strava queue: empty".to_string()
+            };
+            let sys_hint = if content_focused {
+                "FOCUS: Content — Tab/Left/Esc: sidebar  Up/Down: panel"
+            } else {
+                "FOCUS: Sidebar — Up/Down: panel  Tab/Right: content"
             };
             Paragraph::new(vec![
                 Line::from(Span::styled(
@@ -1619,6 +1671,11 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Line::from(format!("Version: {}", app.version())),
                 Line::from(""),
                 Line::from(Span::styled(strava_note, Color::DarkGray)),
+                Line::from(""),
+                Line::from(Span::styled(
+                    sys_hint,
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                )),
             ])
         }
         SettingsSelection::User => {
@@ -1626,6 +1683,7 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
             let st = &app.settings;
             let field_line = |label: &str, value: String, f: SettingsField| {
                 let active = st.field == f;
+                let focused = content_focused;
                 let display = if active && st.editing {
                     format!("> {}: {}_", label, st.draft)
                 } else if active {
@@ -1635,9 +1693,21 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 };
                 Line::from(vec![Span::styled(
                     display,
-                    if active {
+                    if active && focused {
+                        if st.editing {
+                            Style::default()
+                                .fg(Color::Black)
+                                .bg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        }
+                    } else if active {
+                        // Active field but content pane not focused — muted.
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(Color::Yellow)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(Color::Gray)
@@ -1679,13 +1749,22 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 SettingsField::MaxHr,
             ));
             lines.push(Line::from(""));
+            // Focus-aware hint: tells the user which pane will react to arrows.
+            let hint = if st.editing {
+                "Editing: Enter to save, Esc to cancel, Backspace to delete"
+            } else if content_focused {
+                "FOCUS: Content — Up/Down: field  Enter: edit  Tab/Left/Esc: sidebar"
+            } else {
+                "FOCUS: Sidebar — Up/Down: panel  Tab/Right: content  Enter: select"
+            };
             lines.push(Line::from(Span::styled(
-                if st.editing {
-                    "Editing: Enter to save, Esc to cancel, Backspace to delete"
-                } else {
-                    "Up/Down: select field   Enter: edit   Tab: switch panel"
-                },
+                hint,
                 Style::default().fg(Color::DarkGray),
+            )));
+            // Persistent global focus hint at the bottom of the User panel.
+            lines.push(Line::from(Span::styled(
+                "Tab toggles focus — highlighted pane receives arrow keys",
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
             )));
             Paragraph::new(lines)
         }
@@ -1780,6 +1859,16 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                     Style::default().fg(Color::Cyan),
                 )));
             }
+            lines.push(Line::from(""));
+            let strava_hint = if content_focused {
+                "FOCUS: Content — Enter: disconnect  Tab/Left/Esc: sidebar"
+            } else {
+                "FOCUS: Sidebar — Up/Down: panel  Tab/Right: content"
+            };
+            lines.push(Line::from(Span::styled(
+                strava_hint,
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+            )));
             Paragraph::new(lines)
         }
     };
