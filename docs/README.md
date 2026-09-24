@@ -1,5 +1,7 @@
 # OLYMPUS — Cycling in Your Terminal
 
+![](../assets/logo.png)
+
 Olympus is a **free, offline-first indoor-cycling app that runs in a terminal**. Think Zwift or TrainerRoad, but keyboard-driven, in your terminal: it connects straight to your smart trainer over Bluetooth, runs structured workouts with live resistance control, tracks you as you ride, and exports a standard fitness file you can upload to Garmin Connect / Strava. No subscription, no cloud, no account.
 
 [![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/) [![Roadmap](https://img.shields.io/badge/Roadmap-v1.0-blue)](ROADMAP.md)
