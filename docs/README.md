@@ -25,10 +25,10 @@ That's it. Your rides land as `.fit` files in `data/.fit/` plus a row in the loc
 
 ## What Olympus Does
 
-- **Drives any modern smart trainer** — it speaks the open Bluetooth Fitness Machine Service, so no trainer brand is special-cased.
+- **Drives any modern smart trainer** — it speaks the open Bluetooth FTMS, so no trainer brand is special-cased.
 - **Runs structured workouts** — `.zwo` / `.erg` files with live ERG resistance: the trainer holds the exact watts of each step (warm-up, intervals, ramps, cooldown).
 - **Estimates your FTP** — a Ramp Test that suggests a functional threshold power from your best 60-second effort, applied with one keystroke.
-- **Tracks you live** — big power/HR readouts, Braille power/cadence/HR/speed graphs, riding zones, and live NP/IF/TSS/kJ while you pedal.
+- **Tracks you live** — power/HR/cadence/speed graphs, riding zones, and live NP/IF/TSS/kJ while you pedal.
 - **Keeps everything** — per-second samples in local SQLite: session history with drill-down, weekly training load (TSS), and 1m/5m/20m power records.
 - **Exports to the platforms you already use** — saves Garmin-valid `.fit` files you can drag into Garmin Connect (auto-syncs to Strava), and **auto-uploads to Strava on Save** when connected (`Settings → Strava` PKCE, `src/strava.rs`), queued offline and retried next boot.
 
@@ -38,7 +38,7 @@ That's it. Your rides land as `.fit` files in `data/.fit/` plus a row in the loc
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | **Smart trainer**           | Connects over Bluetooth as a standard Fitness Machine; Olympus sets the ERG target power so the trainer never freewheels. |
 | **Heart-rate strap**        | Optional second Bluetooth device; its readings win over the trainer's relayed HR whenever both are live.                  |
-| **No trainer / no sensors** | Everything still works — you just get honest `--` stats instead of fabricated numbers.                                    |
+| **No trainer / no sensors** | Everything still works — you just get honest `--` stats.                                                                  |
 
 ## Controls
 
@@ -148,7 +148,13 @@ Start the app with no sensors paired and Olympus stays honest: the Control panel
 
 ### Locked slice · Phases 7–12 (shipped)
 
-Docs as source of truth ✅, trust the numbers ✅, HR-strap merge ✅, FTP ramp test + first-ride onboarding ✅, Strava auto-upload (PKCE + queued retry) ✅ — running as `1.1.0`, tag `v1.1.0`.
+ - [x] Docs as source of truth 
+ - [x] trust the numbers
+ - [x] HR-strap merge
+ - [x] FTP ramp test + first-ride onboarding
+ - [x] Strava auto-upload (PKCE + queued retry)
+
+Running as `1.1.0`, tag `v1.1.0`.
 
 ### Next — the complete training app (`ROADMAP.md` §2, Phases 11–14)
 

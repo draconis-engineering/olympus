@@ -26,7 +26,7 @@ use std::path::Path;
 pub struct FitSession {
     pub total_distance: f32,
     pub total_calories: f32,
-    pub total_power: f32, // Note: Not in your original SQLite schema, but kept in struct
+    pub total_power: f32, // Note: Not in the original SQLite schema, but kept in struct
     pub avg_speed: f32,
     pub max_speed: f32,
     pub max_heart_rate: u16,

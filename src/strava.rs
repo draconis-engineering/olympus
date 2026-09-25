@@ -19,6 +19,7 @@ pub const TOKEN_PATH: &str = "data/user/strava.json";
 pub const QUEUE_PATH: &str = "data/user/strava_queue.json";
 
 // Strava OAuth / upload endpoints.
+#[allow(dead_code)]
 pub const STRAVA_AUTH_URL: &str = "https://www.strava.com/oauth/authorize";
 pub const STRAVA_TOKEN_URL: &str = "https://www.strava.com/oauth/token";
 pub const STRAVA_UPLOAD_URL: &str = "https://www.strava.com/api/v3/uploads";
@@ -26,6 +27,7 @@ pub const STRAVA_UPLOAD_URL: &str = "https://www.strava.com/api/v3/uploads";
 /// Where the OAuth redirect lands. For a TUI the common pattern is a loopback
 /// `http://localhost:<port>/callback`. Users paste the `code` back when no
 /// server is running, so we keep this configurable via env.
+#[allow(dead_code)]
 pub fn redirect_uri() -> String {
     std::env::var("OLYMPUS_STRAVA_REDIRECT_URI")
         .unwrap_or_else(|_| "http://localhost:8080/callback".to_string())
@@ -33,10 +35,14 @@ pub fn redirect_uri() -> String {
 
 /// Client id from `STRAVA_CLIENT_ID` env (never hardcoded / never committed).
 pub fn client_id_from_env() -> Option<String> {
-    std::env::var("STRAVA_CLIENT_ID").ok().filter(|s| !s.is_empty())
+    std::env::var("STRAVA_CLIENT_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 pub fn client_secret_from_env() -> Option<String> {
-    std::env::var("STRAVA_CLIENT_SECRET").ok().filter(|s| !s.is_empty())
+    std::env::var("STRAVA_CLIENT_SECRET")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 // ---------------------------------------------------------------------------
@@ -58,6 +64,7 @@ fn default_token_type() -> String {
     "Bearer".to_string()
 }
 
+#[allow(dead_code)]
 impl StravaToken {
     pub fn new(access_token: String, refresh_token: String, expires_in_secs: i64) -> Self {
         Self {
@@ -138,6 +145,7 @@ pub fn is_connected() -> bool {
 // ---------------------------------------------------------------------------
 
 /// Generate a PKCE verifier + S256 challenge pair. Returns (verifier, challenge).
+#[allow(dead_code)]
 pub fn generate_pkce() -> (String, String) {
     use oauth2::{PkceCodeChallenge, PkceCodeVerifier};
     // oauth2 generates a random verifier internally when we create a challenge.
@@ -150,10 +158,10 @@ pub fn generate_pkce() -> (String, String) {
     // Note: we generate verifier via random string above; challenge is SHA256.
     (verifier.secret().clone(), challenge.as_str().to_string())
 }
-
+#[allow(dead_code)]
 fn random_verifier_string() -> String {
     // 64 random bytes -> base64url -> 86 chars, within 43-128 spec.
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
     let mut bytes = [0u8; 64];
     // Use uuid + chrono as entropy fallback if getrandom not available; for
     // tests determinism isn't needed — any printable verifier works.
@@ -161,7 +169,7 @@ fn random_verifier_string() -> String {
     let _ = getrandom_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
-
+#[allow(dead_code)]
 fn getrandom_bytes(buf: &mut [u8]) -> Result<(), ()> {
     // Try to use getrandom via std; fall back to pseudo-random.
     // We avoid adding a new dep; use uuid v4 bytes as entropy if needed.
@@ -187,8 +195,9 @@ fn getrandom_bytes(buf: &mut [u8]) -> Result<(), ()> {
 }
 
 /// Low-level PKCE S256 helper (used in tests to verify vectors deterministically).
+#[allow(dead_code)]
 pub fn pkce_challenge_s256(verifier: &str) -> String {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
     use sha2::{Digest, Sha256};
     let hash = Sha256::digest(verifier.as_bytes());
     URL_SAFE_NO_PAD.encode(hash)
@@ -196,6 +205,7 @@ pub fn pkce_challenge_s256(verifier: &str) -> String {
 
 /// Build the Strava authorize URL for PKCE. `state` should be a random CSRF
 /// token the caller persists and checks on callback.
+#[allow(dead_code)]
 pub fn build_auth_url(
     client_id: &str,
     redirect_uri: &str,
@@ -266,7 +276,7 @@ pub fn enqueue_fit(fit_path: &Path) -> Result<(), String> {
     });
     save_queue(&q)
 }
-
+#[allow(dead_code)]
 pub fn dequeue_fit(fit_path: &str) {
     let mut q = load_queue();
     q.retain(|e| e.fit_path != fit_path);
@@ -278,6 +288,7 @@ pub fn dequeue_fit(fit_path: &str) {
 // ---------------------------------------------------------------------------
 
 /// Exchange an authorization `code` for a token (PKCE verifier required).
+#[allow(dead_code)]
 pub async fn exchange_code(
     client_id: &str,
     client_secret: &str,
@@ -411,7 +422,10 @@ pub async fn upload_fit(
     // Strava returns {"id": 123, "external_id": "...", "status": "..."}
     let id = val
         .get("id")
-        .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+        .and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        })
         .map(|n| n.to_string())
         .unwrap_or_else(|| "ok".to_string());
     Ok(id)

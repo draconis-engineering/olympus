@@ -26,8 +26,8 @@ This roadmap was cut 2026-09-04 after a competitive pass against the dominant ri
 
 | Phase                                     | Delivered in | Headline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0–2 — Correctness, ride control, BLE.** | `3ef2f08`    | FIT `total_calories` from avg power + `start` from first sample; `env_logger::init()`; `ensure_data_dirs()` on boot; dead `render_loading` removed; `--help`/`--version` CLI; deps trimmed (dropped `crossbeam-channel`, `serde-xml-rs`; `uuid` kept for GATT UUIDs). Ride control: `+/-` ±5 W ERG nudge, `n`/`p` skip/prev step, `e` ERG↔hold, control footer key hints, `paused_seconds` accrual, tests. BLE: Settings `Scan` button, error banner, `ramp_target` 2–3 s linear ramp on target changes. |
-| **3 — History & Stats.**                  | `9180f34`    | Sessions drill-down (Braille power(t) vs target(t) replay from `samples`); Stats screen: weekly TSS bars (last 8 weeks), PR curve `1m/5m/20m`, volume km/h — all from local SQLite.                                                                                                                                                                                                                                                                                                                      |
+| **0–2 — Correctness, ride control, BLE.** | `3ef2f08`    | FIT `total_calories` from avg pwr + `start` from first sample; `env_logger::init()`; `ensure_data_dirs()` on boot; dead `render_loading` removed; `--help`/`--version` CLI; dropped `crossbeam-channel`, `serde-xml-rs`; `uuid` kept for GATT UUIDs. Ride control: `+/-` ±5 W ERG nudge, `n`/`p` skip/prev step, `e` ERG↔hold, control footer key hints, `paused_seconds` accrual, tests. BLE: Settings `Scan` button, error banner, `ramp_target` 2–3 s linear ramp on target changes. |
+| **3 — History & Stats.**                  | `9180f34`    | Sessions drill-down (Braille power(t) vs target(t) replay from `samples`); Stats screen: weekly TSS bars, PR curve `1m/5m/20m`, volume — all from local SQLite.                                                                                                                                                                                                                                                                                                                                          |
 | **4 — Content & FTP.**                    | `7f71b0b`    | 4 curated workouts (`ftp_test_20min`, `sweet_spot`, `vo2max_30_30`, `recovery`); Workouts lists show `TSS \| duration`; summary prompt `best20×0.95 → Update FTP? [Y/N]`.                                                                                                                                                                                                                                                                                                                                |
 | **5 — Export (manual).**                  | `67f5165`    | Summary hint `FIT ready at data/.fit/ride_*.fit — drag to Garmin Connect`; manual export docs.                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **6 — Polish & release.**                 | `d8f76a1`    | `?` keybind help overlay; bump to `1.0.0-rc1` (app + Cargo.toml); tag `v1.0.0-rc1`.                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -44,35 +44,35 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 
 > **Locked slice: Phases 7–12 shipped** (source-of-truth → trust → HR → FTP ramp → Strava PKCE). Phase 12 landed the version gate: **`1.1.0` + tag `v1.1.0`**. Phases 13–14 follow, then `1.2.0`.
 
-### Phase 7 — Docs = source of truth (this commit, small)
+### Phase 7 — Docs = source of truth
 
 - [x] Grep-verify every "shipped" claim before writing (the old checkboxes drifted — Phases 0–2 were done but still `[ ]`).
 - [x] Compact Phases 0–6 into the table above; reference code **function-first** (`handle_control_key`, `ramp_target`, `version_static`) so line numbers don't rot.
 - [x] **Anti-drift rule:** code landings update ROADMAP/README checkboxes in the _same commit_.
 - [x] Files: `docs/ROADMAP.md`, `docs/README.md`. Verify: `cargo test`.
 
-### Phase 8 — Trust the numbers (small, high credibility)
+### Phase 8 — Trust the numbers
 
 - [x] Pin pause-exclusion end-to-end: `paused_seconds` already freezes clock + accrues (`paused_seconds_excluded_from_ride_time`) — added `tss_frozen_during_pause` asserting TSS's `elapsed_secs` denominator never includes paused time.
 - [x] `ELEV/GRAD` are always `0.0` in ERG mode — render `-- (ERG mode)` instead of a confident zero.
 - [x] **No made-up data, anywhere:** removed the simulated BLE fallback (`emit_simulated`, `BleState::Simulated`, `rand` dep), the `General`/`Appearance` settings stubs, and the two `(simulated — no trainer)` footers. Control now shows an idle `READY — NO RIDE IN PROGRESS` panel when no ride is running (`render_control_idle`); `c` / Main→Control just navigate, and `Space`/`Enter` on the idle panel starts a ride.
 - [x] Files: `src/app.rs`, `src/ble.rs`, `src/math.rs`, `src/render.rs`, `src/main.rs`, `src/nav.rs`, `Cargo.toml`. Verify: new TSS-pause test, idle-render path covered by the existing control smoke tests.
 
-### Phase 9 — HR strap merge (medium–large, biggest data-quality gap)
+### Phase 9 — HR strap merge
 
 - [x] Second peripheral `0x2A37` Heart Rate Measurement alongside the FTMS trainer; merged into `LiveData.hr` with source priority (strap wins when present); cadence stays `CrankTracker`.
 - [x] `ble.rs`: dual GATT subscription + grouped scan (`find_sensors` classifies peripherals by service UID: FMS/CPS → trainer, HRM-only → strap); `Connected { trainer, strap }` reports both names; Settings + System show the strap row.
 - [x] Unit tests: strap-over-trainer priority (`parse_notification` suppress path + end-to-end merge), dropped-strap fallback (trainer HR resumes), no-trainer idle state (Phase 8).
 - [x] Risk: multi-peripheral flake on BlueZ → reuse Phase 0–2 reconnect/Scan; keep single-trainer ERG until stable.
 
-### Phase 10 — FTP ramp test + first-ride onboarding (small–medium)
+### Phase 10 — FTP ramp test + first-ride onboarding
 
 - [x] Ship `data/workouts/ramp_test.zwo` (**Warmup 10 m → 25 m Ramp from 100 W at +20 W/min → Cooldown 5 m**) via the existing `Ramp` parser (`src/erg.rs`): a `Ramp` with `PowerLow`+`RampRate` (or `PowerHigh`) expands to a 1-minute ascending staircase and tags the workout `is_ramp_test`.
 - [x] Detection formula: **FTP = 0.75 × best 60-s power**, reusing `best_rolling_mean` (`src/math.rs`) inside `ftp_estimate()` (`src/app.rs`); ramp-test rides switch the summary prompt's window while normal rides keep `best20×0.95` — all through the existing `confirm_ftp` Y/N prompt (Phase 4).
 - [x] Onboarding: with no session history + no trainer, Main shows a `NEW RIDER? … Ramp Test` hint under the menu (`main_draw`, `has_ride_history` seeded from the DB at startup); it clears after the first saved ride.
 - [x] Verify: `ramp_rate_expands_to_ascending_minute_steps`, `ramp_test_suggestion_uses_best60_times_075`, `onboarding_hint_guides_new_rider_until_history_exists`, and `shipped_workouts_parse_and_have_totals` covers `ramp_test`. Version gate: bump to `1.0.0`, tag `v1.0.0`.
 
-### Phase 11 — Distribution & installation (medium–large)
+### Phase 11 — Distribution & installation
 
 - [ ] Release script: `cargo build --release` → per-OS artifacts (Windows `.zip` + optional `.msi`, macOS/`.deb`; `cargo install --path .` path documented).
 - [x] **Setup wizard / install scripts** for a future Downloads page: `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) that detect the OS/arch, fetch the matching release artifact (`olympus-<tag>-<os>-<arch>.tar.gz|.zip` + `.sha256`), verify the SHA-256 when published (`OLYMPUS_REQUIRE_CHECKSUM=1` / `-RequireChecksum` to enforce), install the binary plus a `data`-home launcher, seed `data/workouts` + a first-run `profile.json`, and print the platform Bluetooth note. **Auto-update = docs only: re-running the wizard always installs the latest release.**
@@ -80,14 +80,14 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - [ ] Downloads page (once the website is ready) links the platform artifacts + wizard, with a pinned release hash so the scripts are auditable.
 - [ ] Verify: release script runs; setup wizard heads for install on an untouched machine (VM smoke test); `cargo install` smoke test; docs accurate.
 
-### Phase 12 — Auto-upload to Strava (large)
+### Phase 12 — Auto-upload to Strava
 
 - [x] `reqwest` + `oauth2` (PKCE); token + refresh persisted at `data/user/strava.json`, **gitignored, never committed** (mirrors `profile.json` location) — `src/strava.rs:13,281`.
 - [x] On Save (`finish_ride` `src/main.rs:94`) upload the FIT via Strava multipart; offline → queue the file and retry next boot (`strava::try_upload_or_queue`, `retry_queued_uploads`, `src/bin/strava-auth.rs` helper).
 - [x] Strava-first: Garmin Connect has no public upload API, so Garmin→Strava fan-out stays manual; a Zwift bridge is out of scope here.
 - [x] Verify: token-refresh unit tests (`strava::tests` 10 passing); one manual upload e2e against a real account (run `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` `cargo run --bin strava-auth`, then Save a ride).
 
-### Phase 13 — Training depth (large, sub-checklist)
+### Phase 13 — Training depth
 
 - [ ] In-app workout creator (TUI editor → writes `data/workouts/name.zwo`).
 - [ ] Plans / weekly calendar reusing `samples` + TSS; `load`/`fatigue` schema columns → fitness/freshness chart.
@@ -95,13 +95,13 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - [ ] Virtual shifting / second FTMS field — staged _after_ Garmin accepts a shifting-flagged FIT.
 - [ ] Each sub-item ships with tests + doc checkbox (Phase 7 rule).
 
-### Phase 14 — In-app update check (small)
+### Phase 14 — In-app update check
 
 - [x] On startup, `reqwest`-poll the GitHub latest release (silent, non-blocking, 2 s timeout, `data/user/update_cache.json` cached); if a newer tag exists, show a banner in the UI ("Update available: vX.Y.Z — re-run scripts/install.sh to update") rather than self-updating — `src/update.rs:13`, `src/app.rs:477`, `src/main.rs:206`, `src/render.rs:1982`.
 - [x] Optional: wizard's pinned release hash stays docs-only; never auto-install over a user's data home.
 - [x] Verify: offline boot stays instant (timeout + cached result); notice appears once per boot, dismissible (`Esc`/`u`, `App::handle_key_press:1368`).
 
-### Phase 15 - Full Triathlon Suite (Very large)
+### Phase 15 - Full Triathlon Suite
 
 - [ ] Parsers/Writers for DSML/DRML (Draconis Swimming/Running Markup Languages, XML-based)
 - [ ] Week/Month/Block/Year-plan structs, hierarchical structure
