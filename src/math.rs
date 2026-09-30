@@ -123,7 +123,7 @@ pub fn normalized_power(raw: &[u64], sample_rate_hz: f64) -> f64 {
     let n = raw.len();
 
     // Compute rolling average of raw power over the last 30 seconds
-    let start = if n > window_bins { n - window_bins } else { 0 };
+    let start = n.saturating_sub(window_bins);
     let seg = &raw[start..];
     let mean: f64 = seg.iter().map(|&v| v as f64).sum::<f64>() / seg.len() as f64;
 

@@ -77,7 +77,7 @@ impl CrankTracker {
     /// Feed a new (revs, event_time) sample; returns the derived cadence in
     /// rpm, or `None` until a second sample is available (or on a bogus delta).
     fn cadence(&self, revs: u32, event_time: u16) -> Option<u16> {
-        let prev_revs = self.revs.load(Ordering::Relaxed) as u32;
+        let prev_revs = self.revs.load(Ordering::Relaxed);
         let prev_time = self.event_time.load(Ordering::Relaxed);
         let init = self.initialized.load(Ordering::Relaxed);
 
@@ -89,7 +89,7 @@ impl CrankTracker {
             return None;
         }
         // Handle 16-bit event-time wraparound.
-        let dt = event_time.wrapping_sub(prev_time) as u16 as u32;
+        let dt = event_time.wrapping_sub(prev_time) as u32;
         // Revolutions may wrap the counter; handle using i32 subtraction.
         let drevs = revs.wrapping_sub(prev_revs) as i32;
         if drevs < 0 || dt == 0 {

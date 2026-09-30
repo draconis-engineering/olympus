@@ -400,7 +400,7 @@ fn header(app: &App) -> Paragraph<'_> {
         Span::from(" "),
         Span::from("olympus").fg(Color::Cyan),
         Span::from(" "),
-        Span::from(format!("{}", app.version())).fg(Color::White),
+        Span::from(app.version().to_string()).fg(Color::White),
         Span::from(" "),
         Span::from(format!("{}", Local::now().format("%Y-%m-%d %H:%M:%S"))).fg(Color::White),
     ]);
@@ -1156,7 +1156,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     let systext = Paragraph::new(vec![
         Line::from(vec![
             Span::styled("BT        ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{conn_name}"), Style::default().fg(Color::White)),
+            Span::styled(conn_name.to_string(), Style::default().fg(Color::White)),
             Span::styled(
                 format!("  [{}]", conn_state.label()),
                 Style::default().fg(conn_style).add_modifier(Modifier::BOLD),
@@ -1585,7 +1585,7 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 _ => Color::DarkGray,
             };
             let detail = match &state {
-                BleUiState::Error(e) => format!("{e}"),
+                BleUiState::Error(e) => e.to_string(),
                 _ => String::new(),
             };
             let mut lines = vec![

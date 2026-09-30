@@ -144,10 +144,10 @@ pub fn load_erg_workout(path: &Path) -> Result<Workout, String> {
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() {
-            if let Some(t) = current.take() {
-                if t.duration_seconds > 0 {
-                    targets.push(t);
-                }
+            if let Some(t) = current.take()
+                && t.duration_seconds > 0
+            {
+                targets.push(t);
             }
             continue;
         }
@@ -188,10 +188,10 @@ pub fn load_erg_workout(path: &Path) -> Result<Workout, String> {
         }
     }
 
-    if let Some(t) = current {
-        if t.duration_seconds > 0 {
-            targets.push(t);
-        }
+    if let Some(t) = current
+        && t.duration_seconds > 0
+    {
+        targets.push(t);
     }
 
     if targets.is_empty() {
@@ -376,7 +376,7 @@ pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
 fn resolve_power(maybe: Option<f32>, ftp: u16) -> Option<u16> {
     let v = maybe?;
     if v <= 10.0 {
-        Some(((v * ftp as f32).round() as u16).max(0))
+        Some((v * ftp as f32).round() as u16)
     } else {
         Some(v.round() as u16)
     }

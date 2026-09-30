@@ -202,8 +202,10 @@ pub enum RideState {
 /// Connection status of the BLE trainer, surfaced to the System panel and the
 /// workout loading overlay.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum BleUiState {
     /// Driver hasn't reported yet.
+    #[default]
     Idle,
     Scanning,
     Connecting,
@@ -211,11 +213,6 @@ pub enum BleUiState {
     Error(String),
 }
 
-impl Default for BleUiState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 impl BleUiState {
     /// A short screen-readable label for the state.
@@ -897,11 +894,10 @@ impl App {
             return;
         }
         self.database.workouts = crate::data::list_workout_files(self.userdata.ftp());
-        if let Ok(conn) = crate::data::init_db(std::path::Path::new("data/olympus.db")) {
-            if let Ok(sessions) = crate::data::list_sessions(&conn, 50) {
+        if let Ok(conn) = crate::data::init_db(std::path::Path::new("data/olympus.db"))
+            && let Ok(sessions) = crate::data::list_sessions(&conn, 50) {
                 self.database.sessions = sessions;
             }
-        }
         self.database.ensure_selected_in_range();
         self.database.loaded = true;
     }
