@@ -62,6 +62,7 @@ pub struct StravaToken {
     pub token_type: String,
 }
 
+#[allow(dead_code)]
 impl StravaToken {
     pub fn new(access_token: String, refresh_token: String, expires_in_secs: i64) -> Self {
         Self {

@@ -293,6 +293,7 @@ pub fn _save_fit_session(
 
 /// One stored session row, as read back from the SQLite history.
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct StoredSession {
     pub id: i64,
     pub filename: String,
