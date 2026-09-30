@@ -22,7 +22,6 @@ use super::math;
 use super::nav::{MainSelection, Selections};
 
 use crossterm::event::KeyCode;
-use std::u16;
 
 // Live data from device
 pub struct LiveData {
@@ -201,8 +200,7 @@ pub enum RideState {
 
 /// Connection status of the BLE trainer, surfaced to the System panel and the
 /// workout loading overlay.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum BleUiState {
     /// Driver hasn't reported yet.
     #[default]
@@ -212,7 +210,6 @@ pub enum BleUiState {
     Connected,
     Error(String),
 }
-
 
 impl BleUiState {
     /// A short screen-readable label for the state.
@@ -895,9 +892,10 @@ impl App {
         }
         self.database.workouts = crate::data::list_workout_files(self.userdata.ftp());
         if let Ok(conn) = crate::data::init_db(std::path::Path::new("data/olympus.db"))
-            && let Ok(sessions) = crate::data::list_sessions(&conn, 50) {
-                self.database.sessions = sessions;
-            }
+            && let Ok(sessions) = crate::data::list_sessions(&conn, 50)
+        {
+            self.database.sessions = sessions;
+        }
         self.database.ensure_selected_in_range();
         self.database.loaded = true;
     }
@@ -1082,9 +1080,7 @@ impl App {
                     let mut push = true;
                     if is_numeric {
                         let only_digits_dot = c.is_ascii_digit() || c == '.';
-                        if !only_digits_dot {
-                            push = false;
-                        } else if c == '.' && self.settings.draft.contains('.') {
+                        if !only_digits_dot || (c == '.' && self.settings.draft.contains('.')) {
                             push = false;
                         }
                     }

@@ -372,18 +372,15 @@ fn footer(current: Screen, app: &App) -> Paragraph<'_> {
     let userspan = Span::styled(app.user(), hlgt_stl);
     //let connspan = Span::styled(app.connection(), hlgt_stl);
 
-    let current_page: Span<'_>;
-
-    // Highlight current screen
-    match current {
-        Screen::Main => current_page = mainspan,
-        Screen::Control => current_page = conspan,
-        Screen::Database => current_page = dbspan,
-        Screen::Settings => current_page = setspan,
-        Screen::Stats => current_page = statsspan,
+    let current_page: Span<'_> = match current {
+        Screen::Main => mainspan,
+        Screen::Control => conspan,
+        Screen::Database => dbspan,
+        Screen::Settings => setspan,
+        Screen::Stats => statsspan,
         // A session drill-down is still "inside" the Database screen.
-        Screen::SessionDetail => current_page = dbspan,
-    }
+        Screen::SessionDetail => dbspan,
+    };
 
     let footerspan = vec![current_page, sep.clone(), userspan, sep.clone()];
     let footerline = Line::from(footerspan);
@@ -1380,7 +1377,7 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
                                 gray
                             },
                         ),
-                        Span::styled(if is_sel { "   " } else { "   " }, dark_gray),
+                        Span::styled("   ", dark_gray),
                         Span::styled(subtitle, if is_sel { white } else { dark_gray }),
                     ])
                 })
