@@ -4,9 +4,12 @@
 #
 # Six targets are built natively (no cross-compilation, so Bluetooth and the
 # bundled SQLite are compiled against the real platform SDK), then packaged on
-# Linux by scripts/package-release.sh and published as a GitHub Release with a
-# SHA-256 sidecar per artifact -- exactly what scripts/install.sh and
-# scripts/install.ps1 expect to download.
+# Linux by scripts/package-release.sh and scripts/package-native.sh, and
+# published as a GitHub Release with a SHA-256 sidecar per artifact.
+#
+# The .tar.gz/.zip set is what scripts/install.sh and scripts/install.ps1
+# download. The native packages are the same Linux binaries repackaged for the
+# system package managers.
 #
 # Artifact names, e.g. for tag v1.2.0:
 #   olympus-v1.2.0-linux-x86_64.tar.gz[.sha256]
@@ -15,6 +18,9 @@
 #   olympus-v1.2.0-macos-arm64.tar.gz[.sha256]
 #   olympus-v1.2.0-windows-x86_64.zip[.sha256]
 #   olympus-v1.2.0-windows-arm64.zip[.sha256]
+#   olympus_1.2.0_amd64.deb[.sha256]              olympus_1.2.0_arm64.deb[.sha256]
+#   olympus-1.2.0.x86_64.rpm[.sha256]             olympus-1.2.0.aarch64.rpm[.sha256]
+#   olympus-1.2.0-x86_64.pkg.tar.zst[.sha256]     olympus-1.2.0-aarch64.pkg.tar.zst[.sha256]
 #
 # Guards, in order:
 #   * the tag must be a real vMAJOR.MINOR.PATCH[-(pre)] tag that already exists
@@ -23,6 +29,8 @@
 #   * each built binary must report the tag's version when run with --version,
 #     which also proves the artifact actually executes on that platform
 #   * the published set must be complete (--strict), with checksums re-verified
+#   * each native package must contain the launcher, the core binary and every
+#     bundled workout, with the executables actually executable
 #
 # A tag with a semver prerelease suffix (v1.2.0-rc1) publishes as a GitHub
 # prerelease, so it stays out of /releases/latest. That matters: src/update.rs
@@ -245,7 +253,48 @@ jobs:
             --out-dir dist \
             --strict
 
+      - name: Install package inspection tools
+        run: |
+          set -euo pipefail
+          # dpkg-deb comes with dpkg, which every ubuntu runner already has. rpm
+          # and zstd are what let scripts/package-native.sh open the .rpm and
+          # .pkg.tar.zst it just built, so all six native packages get their
+          # contents and permissions checked instead of only the two readable
+          # here by default.
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm zstd
+
+      - name: Install nfpm
+        env:
+          NFPM_VERSION: 2.47.0
+          # Verified against the release's own checksums.txt, then re-verified by
+          # downloading the tarball and hashing it here.
+          NFPM_SHA256: 0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783
+        run: |
+          set -euo pipefail
+          # Only the x86_64 build is fetched: nfpm cross-compiles package
+          # metadata for every target architecture, so one binary covers the
+          # amd64 and arm64 packages alike.
+          curl -fsSL -o nfpm.tar.gz \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          echo "$NFPM_SHA256  nfpm.tar.gz" | sha256sum -c -
+          tar -xzf nfpm.tar.gz -C /usr/local/bin nfpm
+          sudo chmod 0755 /usr/local/bin/nfpm
+          nfpm --version
+
+      - name: Build native Linux packages
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"
+          bash scripts/package-native.sh \
+            --tag "$TAG" \
+            --bin-dir bin \
+            --out-dir dist \
+            --strict
+
       - name: Compose release notes
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           set -euo pipefail
           # Best effort: an initial release has no previous tag to diff against.
@@ -263,7 +312,22 @@ jobs:
             printf 'irm https://raw.githubusercontent.com/%s/%s/scripts/install.ps1 | iex\n' \
               "$GITHUB_REPOSITORY" "$TAG"
             printf '%s\n' '```' ''
-            printf '%s\n' 'Re-run the same command later to update to a newer release.' '' '---' ''
+            printf '%s\n' 'Re-run the same command later to update to a newer release.' ''
+            printf '%s\n' '### Native Linux packages' ''
+            printf '%s\n' 'The same Linux binaries are also published as system packages. Download the one' \
+              'matching your distribution and architecture, then install it with your package manager:' ''
+            printf '%s\n' '```bash'
+            printf '# Debian / Ubuntu\n'
+            printf 'sudo apt install ./olympus_%s_amd64.deb        # or _arm64.deb\n' "$VERSION"
+            printf '\n'
+            printf '# Arch Linux\n'
+            printf 'sudo pacman -U ./olympus-%s-x86_64.pkg.tar.zst   # or -aarch64.pkg.tar.zst\n' "$VERSION"
+            printf '\n'
+            printf '# Fedora / RHEL / openSUSE\n'
+            printf 'sudo dnf install ./olympus-%s.x86_64.rpm       # or .aarch64.rpm\n' "$VERSION"
+            printf '%s\n' '```' ''
+            printf '%s\n' 'These install `olympus` on your PATH and seed the bundled workouts. Ride data' \
+              "lives in \`~/.local/share/olympus/data\`, the same place the install script above uses." '' '---' ''
             cat notes-generated.md
           } > notes.md
 

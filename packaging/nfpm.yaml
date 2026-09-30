@@ -1,0 +1,97 @@
+# nfpm config for the native Linux packages: Debian/Ubuntu, Arch, Fedora/RHEL.
+#
+# Everything here is driven by scripts/package-native.sh, which is run by the
+# tag-driven .github/workflows/release.yml on the release host. Do not invoke
+# nfpm against this file by hand: the paths below are relative on purpose.
+#
+# Three nfpm behaviours were established by probing v2.47.0, and all three are
+# load-bearing. Each is commented at the place it bites.
+#
+# 1. `arch` cannot be set per packager.
+#    `overrides.<packager>.arch` is rejected outright ("field arch not found in
+#    type nfpm.Overridables"), and nfpm does not translate Debian architecture
+#    names into RPM/Arch ones. So this is a single templated field, and the
+#    driver script sets OLYMPUS_ARCH per invocation: amd64/arm64 for deb,
+#    x86_64/aarch64 for rpm and archlinux.
+#
+# 2. `contents[].src` is NOT environment-templated, and resolves against the
+#    current working directory, not against this file. An unexpanded
+#    "${OLYMPUS_PAYLOAD}" is treated as a literal path and the build fails with
+#    "Add tree: GetFileAttributesEx ... no such file". The driver therefore
+#    stages the tree and then runs nfpm from inside that staging directory, so
+#    the fixed relative names below resolve correctly.
+#
+# 3. Permissions come from the staged files, not from this file.
+#    nfpm applies `file_info.mode` to directories as well as regular files, so a
+#    `mode: 0644` tree also produces 0644 *directories* -- untraversable, which
+#    would make the bundled workouts unreachable at runtime. Declaring a
+#    `type: dir` for a directory a tree already provides is rejected as a
+#    "content collision", so there is no way to mix 0755 directories with 0644
+#    files through file_info. The fix is to omit file_info entirely: with it
+#    absent nfpm preserves the source modes, and the driver chmods the staged
+#    tree to 0755 for directories and executables, 0644 for data. Verified by
+#    staging a read-only file and observing 0444 in the resulting .deb.
+#
+# Reproducibility: unlike the .tar.gz archives, these packages are NOT
+# byte-reproducible. nfpm stamps the current time into the package metadata
+# (Arch's builddate, RPM's build time) and gives directories that mtime. File
+# mtimes are pinned from SOURCE_DATE_EPOCH in the driver, which is as far as it
+# goes without a `mtime:` key -- and `mtime` is not environment-templated
+# (unlike `version` and `arch`), so it cannot be fed from the release workflow.
+#
+# Known cosmetic limitation: nfpm v2.47.0 has no `packager` key at the top level
+# or under overrides ("field packager not found in type nfpm.Config"), so Arch's
+# .PKGINFO reports `packager = Unknown Packager`. pkgname, pkgbase, pkgver and
+# the dependency list are all correct, and pacman does not care.
+
+name: olympus
+arch: ${OLYMPUS_ARCH}
+version: ${OLYMPUS_VERSION}
+section: utils
+priority: optional
+maintainer: amundgaard <amundgaard@users.noreply.github.com>
+vendor: draconis-engineering
+homepage: https://github.com/draconis-engineering/olympus
+license: GPL-3.0
+description: >-
+  Indoor cycling trainer app. Olympus connects to Bluetooth LE smart trainers,
+  drives them against your FTP profile, and records every ride locally.
+
+contents:
+  # /usr/bin/olympus       -- the launcher
+  # /usr/bin/olympus-core  -- the release binary
+  - src: payload/bin
+    dst: /usr/bin
+    type: tree
+
+  # /usr/share/olympus/workouts/*.zwo -- bundled workout library
+  # /usr/share/olympus/LICENSE
+  - src: payload/share/olympus
+    dst: /usr/share/olympus
+    type: tree
+
+# Runtime dependencies, per packager.
+#
+# btleplug talks to bluetoothd over D-Bus, so the libdbus client library is a
+# hard requirement. The bluetooth stack itself is a recommend/suggest rather
+# than a hard dependency: a headless box may already have it, and refusing to
+# install on a machine that manages bluetoothd some other way would be hostile.
+# Naming: libdbus-1-3 on Debian/Ubuntu, dbus-libs on Fedora/RHEL, dbus on Arch.
+#
+# Note the absence of `optdepends` for Arch -- nfpm's overrides schema rejects
+# it ("field optdepends not found in type nfpm.Overridables"), so bluez is not
+# advertised on Arch at all rather than advertised wrongly.
+overrides:
+  deb:
+    depends:
+      - libdbus-1-3
+    recommends:
+      - bluetooth
+  rpm:
+    depends:
+      - dbus-libs
+    suggests:
+      - bluez
+  archlinux:
+    depends:
+      - dbus

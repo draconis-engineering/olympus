@@ -158,7 +158,7 @@ Running as `1.1.0`, tag `v1.1.0`.
 
 ### Next — the complete training app (`ROADMAP.md` §2, Phases 11–14)
 
-- [x] **Phase 11 — Distribution & installation:** install wizards shipped — `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) — OS/arch detection, SHA-256 verify, data-home seeding, per-OS Bluetooth notes, re-run to update; tag-driven release pipeline ships the six platform artifacts + `.sha256` sidecars they fetch; future Downloads page still open
+- [x] **Phase 11 — Distribution & installation:** install wizards shipped — `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) — OS/arch detection, SHA-256 verify, data-home seeding, per-OS Bluetooth notes, re-run to update; tag-driven release pipeline ships the six platform artifacts + `.sha256` sidecars they fetch, plus native `.deb` / Arch / `.rpm` packages for Linux; future Downloads page still open
 - [x] **Phase 12 — Strava auto-upload:** OAuth PKCE (`src/strava.rs` + `src/bin/strava-auth.rs`), queued retry on `Save`, token at `data/user/strava.json` gitignored
 - [ ] **Phase 13 — Training depth:** workout creator, plans / fitness-freshness, adherence, virtual shifting
 - [x] **Phase 14 — In-app update check:** silent latest-release poll on boot (`src/update.rs`) → banner "re-run scripts/install.sh" (`Esc`/`u` dismiss)

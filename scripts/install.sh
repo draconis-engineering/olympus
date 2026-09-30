@@ -22,6 +22,11 @@
 #   os:  linux | macos | windows
 #   arch: x86_64 | arm64
 #   Archive layout: olympus/ (the binary) + olympus/data/workouts/*.zwo
+#
+# Releases also ship native Linux packages (.deb, Arch .pkg.tar.zst, .rpm) for
+# anyone who would rather use their package manager. Both routes install the
+# same data home, ~/.local/share/olympus, so this script and a package can be
+# mixed without splitting your ride data.
 
 set -euo pipefail
 

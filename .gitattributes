@@ -1,0 +1,8 @@
+# The release pipeline runs these files through bash and /bin/sh on the Linux
+# release host, where a stray carriage return is a syntax error -- and it would
+# only surface at release time, not at commit time. Pin them to LF so a Windows
+# checkout (core.autocrlf=true) cannot rewrite them.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+packaging/launcher/olympus text eol=lf

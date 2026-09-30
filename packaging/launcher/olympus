@@ -1,0 +1,62 @@
+#!/bin/sh
+# Olympus launcher, installed as /usr/bin/olympus by the native Linux packages
+# (see packaging/nfpm.yaml). The release binary itself is installed alongside
+# it as /usr/bin/olympus-core.
+#
+# The app resolves its data directory relative to the process working
+# directory, so this launcher owns the on-disk layout:
+#
+#   read-only, from the package   /usr/share/olympus/workouts/*.zwo
+#   read-write, one per user      $DATA_HOME/data/{workouts,.fit,user}
+#
+# $DATA_HOME is deliberately the same path scripts/install.sh uses, and
+# deliberately not $XDG_DATA_HOME: a user who installs with a package after
+# running the install script (or the other way round) must land on one data
+# directory, not two. Setting OLYMPUS_DATA_HOME overrides both.
+#
+# Nothing here needs root. The seeding below is idempotent and never clobbers
+# existing data.
+
+set -eu
+
+# $0 is the full path the shell resolved through $PATH, so this is /usr/bin for
+# a normal `olympus` invocation.
+bindir=$(dirname "$0")
+core="$bindir/olympus-core"
+sharedir="$bindir/../share/olympus"
+
+if [ ! -x "$core" ]; then
+  echo "olympus: cannot execute the Olympus core binary at $core" >&2
+  echo "olympus: the package looks broken; try reinstalling it" >&2
+  exit 1
+fi
+
+data_home="${OLYMPUS_DATA_HOME:-$HOME/.local/share/olympus}"
+
+mkdir -p "$data_home/data/workouts" "$data_home/data/.fit" "$data_home/data/user"
+
+# -n keeps workouts the user has since edited. cp -n is not POSIX, but GNU
+# coreutils has it on every platform these packages target, and the || true
+# covers the older coreutils that exited non-zero when skipping.
+if [ -d "$sharedir/workouts" ]; then
+  cp -n "$sharedir"/workouts/*.zwo "$data_home/data/workouts/" 2>/dev/null || true
+fi
+
+# The app expects a profile to exist; seed defaults on first run so the setup
+# wizard has something to edit. Identical to the first-run profile that
+# scripts/install.sh writes.
+profile="$data_home/data/user/profile.json"
+if [ ! -f "$profile" ]; then
+  cat > "$profile" <<'PROFILE'
+{
+  "username": "Rider",
+  "weight": 75.0,
+  "height": 180.0,
+  "ftp": 200,
+  "max_hr": 180
+}
+PROFILE
+fi
+
+cd "$data_home"
+exec "$core" "$@"
