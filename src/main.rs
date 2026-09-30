@@ -210,11 +210,12 @@ async fn main() -> io::Result<()> {
         let current = App::version_static().to_string();
         // Seed banner from cache instantly so offline boot stays snappy.
         if let Some(cached) = update::load_cache().latest_tag
-            && update::is_newer(&current, &cached) {
-                app.update_notice = Some(format!(
-                    "Update available: {cached} (you have v{current}) — re-run scripts/install.sh to update"
-                ));
-            }
+            && update::is_newer(&current, &cached)
+        {
+            app.update_notice = Some(format!(
+                "Update available: {cached} (you have v{current}) — re-run scripts/install.sh to update"
+            ));
+        }
         tokio::spawn(async move {
             if let Some(msg) = update::check_for_update(&current).await {
                 let _ = update_tx.send(msg);
@@ -334,17 +335,18 @@ async fn main() -> io::Result<()> {
 
         // Handle user input.
         if let Ok(key) = key_rx.try_recv()
-            && key.kind == KeyEventKind::Press {
-                match app.handle_key_press(key.code) {
-                    Action::Quit => break,
-                    // Settings → Bluetooth → Enter: tell the driver to drop the
-                    // current trainer and scan for a new one.
-                    Action::Scan => {
-                        let _ = cmd_tx.send(ble::BleCommand::Scan).await;
-                    }
-                    Action::Continue => {}
+            && key.kind == KeyEventKind::Press
+        {
+            match app.handle_key_press(key.code) {
+                Action::Quit => break,
+                // Settings → Bluetooth → Enter: tell the driver to drop the
+                // current trainer and scan for a new one.
+                Action::Scan => {
+                    let _ = cmd_tx.send(ble::BleCommand::Scan).await;
                 }
+                Action::Continue => {}
             }
+        }
 
         // When the end-of-ride dialog picks Save or Discard, persist/clear the
         // recording here (main owns the FIT writer and the sample buffer).
