@@ -8,10 +8,11 @@ use olympus::strava;
 use std::io::{self, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client_id = std::env::var("STRAVA_CLIENT_ID")
-        .map_err(|_| "STRAVA_CLIENT_ID not set — create an app at https://www.strava.com/settings/api")?;
-    let client_secret = std::env::var("STRAVA_CLIENT_SECRET")
-        .map_err(|_| "STRAVA_CLIENT_SECRET not set")?;
+    let client_id = std::env::var("STRAVA_CLIENT_ID").map_err(
+        |_| "STRAVA_CLIENT_ID not set — create an app at https://www.strava.com/settings/api",
+    )?;
+    let client_secret =
+        std::env::var("STRAVA_CLIENT_SECRET").map_err(|_| "STRAVA_CLIENT_SECRET not set")?;
     let redirect_uri = std::env::var("OLYMPUS_STRAVA_REDIRECT_URI")
         .unwrap_or_else(|_| "http://localhost:8080/callback".to_string());
 

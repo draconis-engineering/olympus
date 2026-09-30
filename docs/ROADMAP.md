@@ -74,11 +74,13 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 
 ### Phase 11 — Distribution & installation
 
-- [ ] Release script: `cargo build --release` → per-OS artifacts (Windows `.zip` + optional `.msi`, macOS/`.deb`; `cargo install --path .` path documented).
+- [x] **Release pipeline (GitHub Actions):** push a `v*` tag → `cargo build --release --locked` on six native runners (linux/macos/windows × x86_64/arm64, so Bluetooth + bundled SQLite compile against the real platform SDK) → `scripts/package-release.sh` lays out each archive and writes the `.sha256` sidecars the wizards download → GitHub Release. Gated on the shared `checks.yml` (fmt/clippy/test), on `Cargo.toml`'s version matching the tag, and on each binary reporting the tag's version from `--version` (which also proves the artifact runs on that platform). `--strict` refuses to publish a partial six-target set. Tags with a semver pre-release suffix publish as a GitHub pre-release, so `src/update.rs` (which polls `/releases/latest`) never offers one to users. `.tar.gz` builds are byte-reproducible via `SOURCE_DATE_EPOCH`. An existing tag can be re-run from the Actions tab (`workflow_dispatch`) — the way to give the already-pushed `v1.0.0` / `v1.0.0-rc1` / `v1.1.0` tags their first release. The same script runs by hand to stage artifacts locally.
+- [ ] Native packages, added on top of the wizards' tar.gz/zip later: Debian/Ubuntu `.deb`, Arch (`pacman`), Windows `.msi`, macOS `.dmg`.
 - [x] **Setup wizard / install scripts** for a future Downloads page: `scripts/install.sh` (Linux/macOS) + `scripts/install.ps1` (Windows) that detect the OS/arch, fetch the matching release artifact (`olympus-<tag>-<os>-<arch>.tar.gz|.zip` + `.sha256`), verify the SHA-256 when published (`OLYMPUS_REQUIRE_CHECKSUM=1` / `-RequireChecksum` to enforce), install the binary plus a `data`-home launcher, seed `data/workouts` + a first-run `profile.json`, and print the platform Bluetooth note. **Auto-update = docs only: re-running the wizard always installs the latest release.**
 - [x] Per-OS Bluetooth setup notes — Windows/macOS (grant Bluetooth permission; no `bluetoothd -E` tweak) alongside the existing Linux guide; the wizard prints the right one for the detected OS.
 - [ ] Downloads page (once the website is ready) links the platform artifacts + wizard, with a pinned release hash so the scripts are auditable.
-- [ ] Verify: release script runs; setup wizard heads for install on an untouched machine (VM smoke test); `cargo install` smoke test; docs accurate.
+- [x] `scripts/package-release.sh` verified locally: all six target shapes packaged, archive layouts + `.sha256` sidecars round-trip through `sha256sum -c`, filenames match what both wizards request, a partial set is reported and `--strict` refuses it, and `.tar.gz` is byte-identical across runs.
+- [ ] Verify on a real tag: first end-to-end release, then the setup wizard installs on an untouched machine (VM smoke test) and a `cargo install --path .` smoke test.
 
 ### Phase 12 — Auto-upload to Strava
 
@@ -141,4 +143,4 @@ Run `cargo run --release` (optionally `-- path/workout.zwo`). Pair any Bluetooth
 - 1.0 is shipped; the **locked slice is Phases 7–10**. Anything else targets `1.1` or the backlog beyond.
 - When a Phase lands, update `docs/README.md` Feature Status **in the same commit** and bump the version string at `App::version_static()`.
 
-_Last updated: 2026-09-20 · Owner: @amundgaard · Status: 1.1 shipped · Phases 7–12 done · Phase 11 install scripts done_
+_Last updated: 2026-09-30 · Owner: @amundgaard · Status: 1.1 shipped · Phases 7–12 done · Phase 11 install scripts + release pipeline done_

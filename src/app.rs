@@ -1202,13 +1202,17 @@ impl App {
                         Action::Continue
                     }
                     KeyCode::Enter if panel == SettingsSelection::Bluetooth => Action::Scan,
-                    KeyCode::Enter if panel == SettingsSelection::Strava && self.strava_connected => {
+                    KeyCode::Enter
+                        if panel == SettingsSelection::Strava && self.strava_connected =>
+                    {
                         let _ = crate::strava::clear_token();
                         self.strava_connected = false;
                         self.strava_status = Some("Strava disconnected.".to_string());
                         Action::Continue
                     }
-                    KeyCode::Char('c') | KeyCode::Char('C') if panel == SettingsSelection::Strava => {
+                    KeyCode::Char('c') | KeyCode::Char('C')
+                        if panel == SettingsSelection::Strava =>
+                    {
                         self.strava_connected = crate::strava::is_connected();
                         Action::Continue
                     }

@@ -14,7 +14,8 @@
 #
 # Re-run this script any time to update to the latest release.
 #
-# Artifact convention (produced by scripts/release.* on the release host):
+# Artifact convention (produced by scripts/package-release.sh, which the
+# tag-driven .github/workflows/release.yml runs on the release host):
 #   <release>/download/<tag>/olympus-<tag>-windows-<arch>.zip
 #   <release>/download/<tag>/olympus-<tag>-windows-<arch>.zip.sha256
 #   arch: x86_64 | arm64

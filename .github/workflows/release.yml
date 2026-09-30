@@ -1,0 +1,283 @@
+# Cut a release: push a v* tag, or dispatch this workflow with an existing tag.
+#
+#   git tag v1.2.0 && git push origin v1.2.0
+#
+# Six targets are built natively (no cross-compilation, so Bluetooth and the
+# bundled SQLite are compiled against the real platform SDK), then packaged on
+# Linux by scripts/package-release.sh and published as a GitHub Release with a
+# SHA-256 sidecar per artifact -- exactly what scripts/install.sh and
+# scripts/install.ps1 expect to download.
+#
+# Artifact names, e.g. for tag v1.2.0:
+#   olympus-v1.2.0-linux-x86_64.tar.gz[.sha256]
+#   olympus-v1.2.0-linux-arm64.tar.gz[.sha256]
+#   olympus-v1.2.0-macos-x86_64.tar.gz[.sha256]
+#   olympus-v1.2.0-macos-arm64.tar.gz[.sha256]
+#   olympus-v1.2.0-windows-x86_64.zip[.sha256]
+#   olympus-v1.2.0-windows-arm64.zip[.sha256]
+#
+# Guards, in order:
+#   * the tag must be a real vMAJOR.MINOR.PATCH[-(pre)] tag that already exists
+#   * the shared checks.yml gate (fmt/clippy/test) must pass
+#   * Cargo.toml's version must equal the tag, per target
+#   * each built binary must report the tag's version when run with --version,
+#     which also proves the artifact actually executes on that platform
+#   * the published set must be complete (--strict), with checksums re-verified
+#
+# A tag with a semver prerelease suffix (v1.2.0-rc1) publishes as a GitHub
+# prerelease, so it stays out of /releases/latest. That matters: src/update.rs
+# polls /releases/latest, so prereleases are never offered to users on update.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish, e.g. v1.1.0. Leave empty when running from the tag itself.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never cancel: a half-built release set is worse than a slow one.
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  meta:
+    name: resolve tag
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - name: Validate the tag
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-}"
+          if [ -z "$tag" ]; then
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              echo "::error::no tag supplied, and this dispatch is not on a tag"
+              exit 1
+            fi
+            tag="$REF_NAME"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$tag' is not a vMAJOR.MINOR.PATCH tag"
+            exit 1
+          fi
+
+          # Lets workflow_dispatch publish a tag that was pushed earlier, which
+          # is how the already-pushed v1.0.0 / v1.0.0-rc1 / v1.1.0 tags get
+          # their first release.
+          if ! gh api "repos/$REPO/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::tag '$tag' does not exist in $REPO -- push it first"
+            exit 1
+          fi
+
+          # Build metadata (+...) is not a prerelease; the dash suffix is.
+          core="${tag%%+*}"
+          prerelease=false
+          if [[ "$core" == *-* ]]; then prerelease=true; fi
+
+          echo "tag=$tag"        >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Publishing $tag (prerelease=$prerelease)"
+
+  verify:
+    name: fmt + clippy + test
+    uses: ./.github/workflows/checks.yml
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: [meta, verify]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # One platform failing should not hide the state of the other five.
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+          - target: linux-arm64
+            os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-x86_64
+            os: macos
+            arch: x86_64
+            runner: macos-15-intel
+          - target: macos-arm64
+            os: macos
+            arch: arm64
+            runner: macos-15
+          - target: windows-x86_64
+            os: windows
+            arch: x86_64
+            runner: windows-2022
+          - target: windows-arm64
+            os: windows
+            arch: arm64
+            runner: windows-11-arm
+    steps:
+      - name: Check out ${{ needs.meta.outputs.tag }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+
+      # btleplug needs libdbus on Linux; the other platforms need nothing extra.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          toolchain: stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Build
+        run: cargo build --release --locked --bin olympus
+
+      - name: Verify the version and stage the binary
+        shell: bash
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          TARGET_OS: ${{ matrix.os }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+
+          # Cargo.toml and the tag have to agree, or the in-app update check
+          # (src/update.rs compares against the release tag) would immediately
+          # offer users the build they are already running.
+          cargo_version="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -n1)"
+          if [ "$cargo_version" != "$VERSION" ]; then
+            echo "::error file=Cargo.toml::version is $cargo_version but the tag is $TAG"
+            exit 1
+          fi
+
+          if [ "$TARGET_OS" = "windows" ]; then
+            bin="target/release/olympus.exe"
+            out="staging/olympus-$TARGET_OS-$TARGET_ARCH.exe"
+          else
+            bin="target/release/olympus"
+            out="staging/olympus-$TARGET_OS-$TARGET_ARCH"
+          fi
+          [ -x "$bin" ] || { echo "::error::no binary at $bin"; exit 1; }
+
+          # --version prints "olympus <version>" and exits before the TUI starts,
+          # so this doubles as proof the artifact runs on this platform.
+          reported="$("$bin" --version | awk '{print $NF}')"
+          if [ "$reported" != "$VERSION" ]; then
+            echo "::error::$bin reports version '$reported', expected '$VERSION' (tag $TAG)"
+            exit 1
+          fi
+
+          mkdir -p staging
+          cp "$bin" "$out"
+          chmod +x "$out"
+          echo "staged $out -> olympus $reported"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: binary-${{ matrix.target }}
+          path: staging/
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: publish release
+    needs: [meta, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.meta.outputs.tag }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+    steps:
+      - name: Check out ${{ needs.meta.outputs.tag }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+
+      - name: Collect the six binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: binary-*
+          path: bin
+          merge-multiple: true
+
+      - name: Package artifacts and checksums
+        run: |
+          set -euo pipefail
+          # Pin tar mtimes to the tagged commit so a rebuild of the same tag
+          # produces byte-identical .tar.gz files.
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"
+          bash scripts/package-release.sh \
+            --tag "$TAG" \
+            --bin-dir bin \
+            --out-dir dist \
+            --strict
+
+      - name: Compose release notes
+        run: |
+          set -euo pipefail
+          # Best effort: an initial release has no previous tag to diff against.
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$TAG" --jq .body > notes-generated.md || : > notes-generated.md
+
+          {
+            printf '%s\n' '## Install' ''
+            printf '%s\n' 'Both wizards detect your OS and CPU, verify the SHA-256, and install the matching artifact above.' ''
+            printf '%s\n' '```bash'
+            printf 'curl -fsSL https://raw.githubusercontent.com/%s/%s/scripts/install.sh | bash\n' \
+              "$GITHUB_REPOSITORY" "$TAG"
+            printf '%s\n' '```' ''
+            printf '%s\n' '```powershell'
+            printf 'irm https://raw.githubusercontent.com/%s/%s/scripts/install.ps1 | iex\n' \
+              "$GITHUB_REPOSITORY" "$TAG"
+            printf '%s\n' '```' ''
+            printf '%s\n' 'Re-run the same command later to update to a newer release.' '' '---' ''
+            cat notes-generated.md
+          } > notes.md
+
+      - name: Create the GitHub release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::release $TAG already exists. Delete it (gh release delete $TAG) or publish a new tag."
+            exit 1
+          fi
+          # Guarded on the exact string: $PRERELEASE is "false" for final
+          # releases, which is non-empty and would expand unconditionally.
+          args=(--verify-tag --title "Olympus $TAG" --notes-file notes.md)
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" dist/* "${args[@]}"

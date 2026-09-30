@@ -15,7 +15,8 @@
 #
 # Every setting below can be overridden via the environment.
 #
-# Artifact convention (produced by scripts/release.* on the release host):
+# Artifact convention (produced by scripts/package-release.sh, which the
+# tag-driven .github/workflows/release.yml runs on the release host):
 #   <release>/download/<tag>/olympus-<tag>-<os>-<arch>.tar.gz
 #   <release>/download/<tag>/olympus-<tag>-<os>-<arch>.tar.gz.sha256
 #   os:  linux | macos | windows

@@ -81,11 +81,7 @@ pub async fn fetch_latest_tag() -> Option<String> {
     }
     let rel: GithubRelease = resp.json().await.ok()?;
     let tag = rel.tag_name.trim().to_string();
-    if tag.is_empty() {
-        None
-    } else {
-        Some(tag)
-    }
+    if tag.is_empty() { None } else { Some(tag) }
 }
 
 /// Check for update and return a banner message if a newer tag exists.

@@ -113,7 +113,10 @@ fn render_help(frame: &mut Frame, area: Rect) {
         key("s", "Settings (Tab toggles focus)"),
         key("?", "close this help"),
         section("Settings — Focus nav"),
-        key("Tab / Right", "sidebar → content (focused pane gets Cyan border)"),
+        key(
+            "Tab / Right",
+            "sidebar → content (focused pane gets Cyan border)",
+        ),
         key("Shift+Tab / Left", "content → sidebar"),
         key("Up / Down", "move in focused pane (panel or field)"),
         key("Enter", "scan / disconnect / edit (focused pane)"),
@@ -1644,7 +1647,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
             };
             lines.push(Line::from(Span::styled(
                 focus_hint,
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
             )));
             Paragraph::new(lines)
         }
@@ -1674,7 +1679,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 Line::from(""),
                 Line::from(Span::styled(
                     sys_hint,
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::DIM),
                 )),
             ])
         }
@@ -1764,15 +1771,25 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
             // Persistent global focus hint at the bottom of the User panel.
             lines.push(Line::from(Span::styled(
                 "Tab toggles focus — highlighted pane receives arrow keys",
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
             )));
             Paragraph::new(lines)
         }
         SettingsSelection::Strava => {
             let connected = app.strava_connected;
             let queue = crate::strava::load_queue();
-            let status_color = if connected { Color::Green } else { Color::Yellow };
-            let status_label = if connected { "CONNECTED" } else { "NOT CONNECTED" };
+            let status_color = if connected {
+                Color::Green
+            } else {
+                Color::Yellow
+            };
+            let status_label = if connected {
+                "CONNECTED"
+            } else {
+                "NOT CONNECTED"
+            };
             let mut lines = vec![
                 Line::from(Span::styled(
                     "Strava Auto-Upload",
@@ -1785,7 +1802,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                     Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         status_label,
-                        Style::default().fg(status_color).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(status_color)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]),
             ];
@@ -1823,7 +1842,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
                     "To connect:",
-                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
                 )));
                 lines.push(Line::from(Span::styled(
                     "  1. Create a Strava API app at strava.com/settings/api",
@@ -1867,7 +1888,9 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
             };
             lines.push(Line::from(Span::styled(
                 strava_hint,
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
             )));
             Paragraph::new(lines)
         }
@@ -2107,7 +2130,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
         let banner = Paragraph::new(Line::from(vec![
             Span::styled(
                 " \u{25B2} ",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(notice.clone(), Style::default().fg(Color::Yellow)),
             Span::styled("  [Esc/u dismiss]", Style::default().fg(Color::DarkGray)),

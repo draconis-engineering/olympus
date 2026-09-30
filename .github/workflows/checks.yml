@@ -1,0 +1,53 @@
+# Shared quality gate: fmt, clippy, tests.
+#
+# Kept as its own file so that PR CI and the release pipeline can never drift
+# apart -- .github/workflows/ci.yml calls it for every push and pull request,
+# and .github/workflows/release.yml calls it before it will build a tag.
+# Nothing reaches a release without passing exactly these checks.
+
+name: checks
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: fmt + clippy + test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # btleplug pulls in libdbus-sys on Linux, which shells out to pkg-config.
+      # Without these the Linux half of the build does not compile.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      # Advisory on purpose. The tree currently carries 22 style lints
+      # (collapsible_if, useless_format, too_many_arguments, ...) that predate
+      # this workflow; failing the build on them would gate releases behind an
+      # unrelated cleanup. New warnings still show up in the log. Promote this
+      # to `-- -D warnings` once the backlog is cleared.
+      - name: Lints
+        run: cargo clippy --all-targets --all-features
+
+      - name: Tests
+        run: cargo test --locked

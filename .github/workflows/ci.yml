@@ -1,0 +1,57 @@
+# CI for pushes to main and every pull request.
+#
+# Two layers:
+#   1. checks.yml  -- the same fmt/clippy/test gate that releases are held to.
+#   2. a compile-only pass on Linux, macOS and Windows, so a PR that breaks the
+#      build on a platform you do not develop on still gets caught here rather
+#      than at release time. (Bluetooth and rusqlite are the usual culprits:
+#      libdbus on Linux, CoreBluetooth on macOS, WinRT on Windows.)
+#
+# The full six-target release build only runs on a tag -- see release.yml.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: fmt + clippy + test
+    uses: ./.github/workflows/checks.yml
+
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          toolchain: stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Build the app binary
+        run: cargo build --locked --bin olympus

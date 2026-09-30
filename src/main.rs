@@ -374,8 +374,7 @@ async fn main() -> io::Result<()> {
                 }
                 let fit_path_clone = fit_path.clone();
                 tokio::spawn(async move {
-                    match strava::try_upload_or_queue(&fit_path_clone, Some(&activity_name)).await
-                    {
+                    match strava::try_upload_or_queue(&fit_path_clone, Some(&activity_name)).await {
                         Ok(true) => log::info!("strava: upload ok"),
                         Ok(false) => log::info!("strava: queued for retry"),
                         Err(e) => log::error!("strava: upload error: {e}"),

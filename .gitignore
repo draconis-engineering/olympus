@@ -1,5 +1,7 @@
 /target
 /graphify-out
+/bin
+/dist
 /data/.fit/*.fit
 /data/olympus.db
 /data/olympus.db-journal
