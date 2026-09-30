@@ -167,19 +167,16 @@ pub enum Focus {
 }
 
 impl Focus {
-    #[allow(dead_code)]
-    pub fn toggle(self) -> Self {
+    pub fn _toggle(self) -> Self {
         match self {
             Focus::Sidebar => Focus::Content,
             Focus::Content => Focus::Sidebar,
         }
     }
-    #[allow(dead_code)]
-    pub fn is_sidebar(self) -> bool {
+    pub fn _is_sidebar(self) -> bool {
         self == Focus::Sidebar
     }
-    #[allow(dead_code)]
-    pub fn is_content(self) -> bool {
+    pub fn _is_content(self) -> bool {
         self == Focus::Content
     }
 }

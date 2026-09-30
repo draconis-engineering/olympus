@@ -265,8 +265,7 @@ pub fn save_ride(
 }
 
 /// Save a FIT session to SQLite (summary only, no samples).
-#[allow(dead_code)]
-pub fn save_fit_session(
+pub fn _save_fit_session(
     conn: &Connection,
     session: &FitSession,
     filename: &str,
@@ -294,7 +293,6 @@ pub fn save_fit_session(
 
 /// One stored session row, as read back from the SQLite history.
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct StoredSession {
     pub id: i64,
     pub filename: String,

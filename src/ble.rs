@@ -175,7 +175,6 @@ fn classify(services: &[Uuid], name: Option<&str>) -> Option<SensorRole> {
 }
 
 /// Result of running the BLE driver: a task handle plus channels.
-#[allow(dead_code)]
 pub struct BleDriver {
     /// Handle to the spawned async task that owns the BLE stack.
     pub task: tokio::task::JoinHandle<()>,

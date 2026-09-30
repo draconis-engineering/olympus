@@ -19,7 +19,6 @@ pub const TOKEN_PATH: &str = "data/user/strava.json";
 pub const QUEUE_PATH: &str = "data/user/strava_queue.json";
 
 // Strava OAuth / upload endpoints.
-#[allow(dead_code)]
 pub const STRAVA_AUTH_URL: &str = "https://www.strava.com/oauth/authorize";
 pub const STRAVA_TOKEN_URL: &str = "https://www.strava.com/oauth/token";
 pub const STRAVA_UPLOAD_URL: &str = "https://www.strava.com/api/v3/uploads";
@@ -27,8 +26,7 @@ pub const STRAVA_UPLOAD_URL: &str = "https://www.strava.com/api/v3/uploads";
 /// Where the OAuth redirect lands. For a TUI the common pattern is a loopback
 /// `http://localhost:<port>/callback`. Users paste the `code` back when no
 /// server is running, so we keep this configurable via env.
-#[allow(dead_code)]
-pub fn redirect_uri() -> String {
+pub fn _redirect_uri() -> String {
     std::env::var("OLYMPUS_STRAVA_REDIRECT_URI")
         .unwrap_or_else(|_| "http://localhost:8080/callback".to_string())
 }
@@ -49,6 +47,10 @@ pub fn client_secret_from_env() -> Option<String> {
 // Token
 // ---------------------------------------------------------------------------
 
+fn default_token_type() -> String {
+    "Bearer".to_string()
+}
+
 /// Persisted Strava OAuth token (mirrors Strava's token response).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StravaToken {
@@ -60,18 +62,13 @@ pub struct StravaToken {
     pub token_type: String,
 }
 
-fn default_token_type() -> String {
-    "Bearer".to_string()
-}
-
-#[allow(dead_code)]
 impl StravaToken {
     pub fn new(access_token: String, refresh_token: String, expires_in_secs: i64) -> Self {
         Self {
             access_token,
             refresh_token,
             expires_at: Utc::now().timestamp() + expires_in_secs,
-            token_type: "Bearer".to_string(),
+            token_type: default_token_type(),
         }
     }
 
@@ -169,7 +166,7 @@ fn random_verifier_string() -> String {
     let _ = getrandom_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
-#[allow(dead_code)]
+
 fn getrandom_bytes(buf: &mut [u8]) -> Result<(), ()> {
     // Try to use getrandom via std; fall back to pseudo-random.
     // We avoid adding a new dep; use uuid v4 bytes as entropy if needed.
