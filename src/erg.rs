@@ -351,10 +351,8 @@ pub fn parse_zwo_workout(path: &Path, ftp: u16) -> Result<Workout, String> {
                     name = Some(text.trim().to_string());
                 }
             }
-            XmlEvent::EndElement { name } => {
-                if name.local_name == "name" {
-                    in_name = false;
-                }
+            XmlEvent::EndElement { name } if name.local_name == "name" => {
+                in_name = false;
             }
             _ => {}
         }

@@ -120,6 +120,7 @@ impl LiveData {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         pwr: u16,
@@ -1498,27 +1499,31 @@ mod tests {
 
     #[test]
     fn database_cursor_clamps_at_edges() {
-        let mut st = DatabaseState::default();
-        st.workouts = vec![
-            crate::data::WorkoutEntry {
-                name: "a".into(),
-                path: "a.zwo".into(),
-                duration_seconds: 300,
-                tss: 20.0,
-            },
-            crate::data::WorkoutEntry {
-                name: "b".into(),
-                path: "b.zwo".into(),
-                duration_seconds: 600,
-                tss: 40.0,
-            },
-            crate::data::WorkoutEntry {
-                name: "c".into(),
-                path: "c.zwo".into(),
-                duration_seconds: 900,
-                tss: 60.0,
-            },
-        ];
+        let mut st = DatabaseState {
+            workouts: vec![
+                crate::data::WorkoutEntry {
+                    name: "a".into(),
+                    path: "a.zwo".into(),
+                    duration_seconds: 300,
+                    tss: 20.0,
+                },
+                crate::data::WorkoutEntry {
+                    name: "b".into(),
+                    path: "b.zwo".into(),
+                    duration_seconds: 600,
+                    tss: 40.0,
+                },
+                crate::data::WorkoutEntry {
+                    name: "c".into(),
+                    path: "c.zwo".into(),
+                    duration_seconds: 900,
+                    tss: 60.0,
+                },
+            ],
+            tab: DatabaseTab::Workouts,
+            ..DatabaseState::default()
+        };
+
         st.tab = DatabaseTab::Workouts;
         st.move_cursor(1);
         assert_eq!(st.selected, 1);
@@ -1530,30 +1535,34 @@ mod tests {
 
     #[test]
     fn database_tab_switch_preserves_selection() {
-        let mut st = DatabaseState::default();
-        st.workouts.push(crate::data::WorkoutEntry {
-            name: "x".into(),
-            path: "x.zwo".into(),
-            duration_seconds: 300,
-            tss: 20.0,
-        });
-        st.sessions.push(crate::data::StoredSession {
-            id: 1,
-            filename: "f".into(),
-            total_distance: 1.0,
-            total_calories: 10.0,
-            avg_speed: 20.0,
-            max_speed: 30.0,
-            max_heart_rate: 150,
-            avg_heart_rate: 140,
-            max_power: 300,
-            avg_power: 200,
-            recorded_at: "now".into(),
-        });
+        let mut st = DatabaseState {
+            workouts: vec![crate::data::WorkoutEntry {
+                name: "x".into(),
+                path: "x.zwo".into(),
+                duration_seconds: 300,
+                tss: 20.0,
+            }],
+            sessions: vec![crate::data::StoredSession {
+                id: 1,
+                filename: "f".into(),
+                total_distance: 1.0,
+                total_calories: 10.0,
+                avg_speed: 20.0,
+                max_speed: 30.0,
+                max_heart_rate: 150,
+                avg_heart_rate: 140,
+                max_power: 300,
+                avg_power: 200,
+                recorded_at: "now".into(),
+            }],
+            ..DatabaseState::default()
+        };
+
         // Move to a valid index, switch tab, ensure it stays clamped.
         st.move_cursor(1);
         st.tab = DatabaseTab::Sessions;
         st.ensure_selected_in_range();
+
         assert_eq!(st.selected, 0);
     }
 

@@ -414,8 +414,8 @@ async fn main() -> io::Result<()> {
                 samples.push(data::Sample {
                     t: Utc::now().timestamp(),
                     power: app.livedata.crnt_pwr,
-                    cadence: app.livedata.crnt_rpm.min(255) as u16,
-                    heart_rate: app.livedata.crnt_hr.min(255) as u16,
+                    cadence: app.livedata.crnt_rpm.min(255),
+                    heart_rate: app.livedata.crnt_hr.min(255),
                     speed: app.livedata.crnt_vel / 3.6,
                 });
             }

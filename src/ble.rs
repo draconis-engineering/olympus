@@ -794,9 +794,9 @@ mod tests {
 
         let mut livedata = crate::app::LiveData::new();
         // main.rs merge: keep last-known value for fields the sample lacks.
-        if pwr.power.is_some() {
+        if let Some(power) = pwr.power {
             livedata.update(
-                pwr.power.unwrap(),
+                power,
                 pwr.cadence.unwrap_or(livedata.crnt_rpm),
                 pwr.heart_rate.unwrap_or(livedata.crnt_hr),
                 pwr.speed.unwrap_or(livedata.crnt_vel),
@@ -806,11 +806,11 @@ mod tests {
                 0.0,
             );
         }
-        if strap.heart_rate.is_some() {
+        if let Some(heart_rate) = strap.heart_rate {
             livedata.update(
                 strap.power.unwrap_or(livedata.crnt_pwr),
                 strap.cadence.unwrap_or(livedata.crnt_rpm),
-                strap.heart_rate.unwrap(),
+                heart_rate,
                 strap.speed.unwrap_or(livedata.crnt_vel),
                 0.0,
                 0.0,
