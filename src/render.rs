@@ -409,10 +409,7 @@ fn header(app: &App) -> Paragraph<'_> {
     Paragraph::new(headerline).block(headerblock)
 }
 
-// ====================================
-// --- Page-Specific Draw Functions ---
-// ====================================
-
+/// Draws the main (home) screen of the application.
 fn main_draw(frame: &mut Frame, area: Rect, app: &App) {
     let _livedata = app.livedata();
     let _userdata = app.userdata();
@@ -509,8 +506,6 @@ fn main_draw(frame: &mut Frame, area: Rect, app: &App) {
     );
 }
 
-// -------------------------------------------------------
-
 /// Idle "ready" panel for the Control screen: shown whenever no ride is in
 /// progress. Surfaces the real trainer connection state and loaded workout and
 /// tells the rider how to start, instead of painting a live dashboard out of
@@ -591,6 +586,7 @@ fn render_control_idle(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
+/// Draws the Control screen, showing the live dashboard or idle status.
 fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     // No ride in progress: show a real status panel instead of a zeroed-out
     // live dashboard (no made-up numbers — data only ever comes from trainers).
@@ -1275,8 +1271,7 @@ fn control_draw(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-// -------------------------------------------------------
-
+/// Draws the Database screen, showing the list of workouts or sessions.
 fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
     let gray = Style::default().fg(Color::Gray);
     let dark_gray = Style::default().fg(Color::DarkGray);
@@ -1436,8 +1431,7 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
     );
 }
 
-// -------------------------------------------------------
-
+/// Draws the Settings screen, allowing the user to configure application settings.
 fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     use crate::nav::Focus;
     let selected = app.selections().settings();
@@ -1896,8 +1890,7 @@ fn settings_draw(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(content, inner_controls_area);
 }
 
-// -------------------------------------------------------
-
+/// Draws the session detail screen, showing the power replay chart and session summary.
 fn session_detail_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     let dark_gray = Style::default().fg(Color::DarkGray);
     let white = Style::default().fg(Color::White);
@@ -1969,6 +1962,7 @@ fn session_detail_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     frame.render_widget(chart, chart_area);
 }
 
+/// Draws the Stats screen, showing aggregate statistics for all rides.
 fn stats_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     let _selected = app.selections().stats();
     let dark_gray = Style::default().fg(Color::DarkGray);
@@ -2084,10 +2078,7 @@ fn stats_draw(frame: &mut Frame, main_area: Rect, app: &App) {
     );
 }
 
-// ====================================
-// --- Drawing Multiplexer Function ---
-// ====================================
-
+/// Drawing Multiplexer Function
 pub fn draw(frame: &mut Frame, app: &App) {
     // Properly split the screen area into two horizontal sections
     let [header_area, main_area, footer_area] = Layout::vertical([
