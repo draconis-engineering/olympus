@@ -49,26 +49,26 @@ arch: ${OLYMPUS_ARCH}
 version: ${OLYMPUS_VERSION}
 section: utils
 priority: optional
-maintainer: amundgaard <amundgaard@users.noreply.github.com>
+maintainer: amundgaard09 <amundgaard09@users.noreply.github.com>
 vendor: draconis-engineering
 homepage: https://github.com/draconis-engineering/olympus
 license: GPL-3.0
 description: >-
-  Indoor cycling trainer app. Olympus connects to Bluetooth LE smart trainers,
-  drives them against your FTP profile, and records every ride locally.
+    Indoor cycling trainer app. Olympus connects to Bluetooth LE smart trainers,
+    drives them against your FTP profile, and records every ride locally.
 
 contents:
-  # /usr/bin/olympus       -- the launcher
-  # /usr/bin/olympus-core  -- the release binary
-  - src: payload/bin
-    dst: /usr/bin
-    type: tree
+    # /usr/bin/olympus       -- the launcher
+    # /usr/bin/olympus-core  -- the release binary
+    - src: payload/bin
+      dst: /usr/bin
+      type: tree
 
-  # /usr/share/olympus/workouts/*.zwo -- bundled workout library
-  # /usr/share/olympus/LICENSE
-  - src: payload/share/olympus
-    dst: /usr/share/olympus
-    type: tree
+    # /usr/share/olympus/workouts/*.zwo -- bundled workout library
+    # /usr/share/olympus/LICENSE
+    - src: payload/share/olympus
+      dst: /usr/share/olympus
+      type: tree
 
 # Runtime dependencies, per packager.
 #
@@ -82,16 +82,16 @@ contents:
 # it ("field optdepends not found in type nfpm.Overridables"), so bluez is not
 # advertised on Arch at all rather than advertised wrongly.
 overrides:
-  deb:
-    depends:
-      - libdbus-1-3
-    recommends:
-      - bluetooth
-  rpm:
-    depends:
-      - dbus-libs
-    suggests:
-      - bluez
-  archlinux:
-    depends:
-      - dbus
+    deb:
+        depends:
+            - libdbus-1-3
+        recommends:
+            - bluetooth
+    rpm:
+        depends:
+            - dbus-libs
+        suggests:
+            - bluez
+    archlinux:
+        depends:
+            - dbus
