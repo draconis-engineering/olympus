@@ -18,9 +18,9 @@
 
 use ratatui::prelude::Color;
 
-// == == = = == == //
-// -- HR MODELS -- //
-// == == = = == == //
+// == == == == == == //
+// --- HR MODELS --- //
+// == == == == == == //
 
 /// Olympiatoppen's Model | Get color from HR zone
 pub fn olt_hr_model(hr: u16, maxhr: u16) -> u16 {
@@ -44,7 +44,6 @@ pub fn olt_hr_model(hr: u16, maxhr: u16) -> u16 {
 
 /// Coggans Model | Convert power + lactate threshold power to zone
 pub fn coggan_pwr_model(pwr: u16, ltpwr: u16) -> u16 {
-    // Color, Zone, Zone description
     let ltpwr_percentage = (pwr as f32 / ltpwr as f32) * 100.0;
     match ltpwr_percentage.round() {
         0.0..=54.0 => 1,
@@ -57,6 +56,22 @@ pub fn coggan_pwr_model(pwr: u16, ltpwr: u16) -> u16 {
         _ => 0,
     }
 }
+
+//Cant find the OLT numbers anywhere...
+//#[allow(dead_code)]
+//pub fn olt_power_model(pwr: u16, ltpwr: u8) -> u8 {
+//    let ltpwr_percentage = (pwr as f32 / ltpwr as f32) * 100.0;
+//    match ltpwr_percentage.round() {
+//        0.0..=54.0 => 1,
+//        55.0..=75.0 => 2,
+//        76.0..=90.0 => 3,
+//        91.0..=105.0 => 4,
+//        106.0..=120.0 => 5,
+//        121.0..=150.0 => 6,
+//        151.0..=1000.0 => 7,
+//        _ => 0,
+//    }
+//}
 
 // == == == = = == == == //
 // -- RENDERING UTILS -- //
@@ -76,12 +91,13 @@ pub fn zone2color(zone: u16) -> Color {
 }
 
 // == == == == == == == == //
-// -- HISTORY HELPERS  --- //
+// --- HISTORY HELPERS --- //
 // == == == == == == == == //
 
 /// Pushes `pwr` onto a rolling history buffer of fixed capacity.
 /// Oldest entry is dropped when the buffer is full.
-pub fn _push_history(buf: &mut Vec<u64>, pwr: u64, cap: usize) {
+#[allow(dead_code)]
+pub fn push_history(buf: &mut Vec<u64>, pwr: u64, cap: usize) {
     if buf.len() >= cap {
         buf.remove(0);
     }

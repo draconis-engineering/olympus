@@ -1336,6 +1336,7 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
 
     // --- RIGHT: ACTIVE LIST ---
     let (title, rows): (&'static str, Vec<Line>) = match app.database.tab {
+        // --- Saved Workouts ---
         DatabaseTab::Workouts => {
             let rows: Vec<Line> = app
                 .database
@@ -1352,7 +1353,15 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
                     let marker = if is_sel { " ▶ " } else { "   " };
                     let mm = w.duration_seconds / 60;
                     let ss = w.duration_seconds % 60;
-                    let subtitle = format!("{:>6.0} TSS   {:2}:{:02}", w.tss, mm, ss);
+                    let width = 40 - name.len();
+                    let subtitle = format!(
+                        "{:>width$} {:>6.0} TSS   {:2}:{:02}",
+                        "",
+                        w.tss,
+                        mm,
+                        ss,
+                        width = width
+                    );
                     Line::from(vec![
                         Span::styled(
                             marker,
@@ -1379,6 +1388,8 @@ fn database_draw(frame: &mut Frame, area: Rect, app: &App) {
                 .collect();
             (" Workouts ", rows)
         }
+
+        // --- Completed Sessions ---
         DatabaseTab::Sessions => {
             let header = Line::from(vec![Span::styled(
                 "  Date                        Dist   AvgP   MaxP",
